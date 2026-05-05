@@ -1,0 +1,226 @@
+import { User, Event, Chat, Message } from '../types';
+
+export const currentUser: User = {
+  id: "me",
+  name: "Alex Chen",
+  year: "Junior",
+  major: "Computer Science",
+  photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop",
+  interests: ["AI/ML", "Photography", "Hiking", "Coffee", "Music"],
+  isOnline: true,
+};
+
+export const mockFriends: User[] = [
+  {
+    id: "1",
+    name: "Sarah Martinez",
+    year: "Junior",
+    major: "Psychology",
+    photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop",
+    interests: ["Psychology", "Coffee", "Yoga", "Art"],
+    location: { lat: 37.4275, lng: -122.1697, label: "CoHo" },
+    isOnline: true,
+    distance: 0.2,
+  },
+  {
+    id: "2",
+    name: "James Wilson",
+    year: "Senior",
+    major: "Economics",
+    photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop",
+    interests: ["Basketball", "Finance", "Podcasts"],
+    location: { lat: 37.4269, lng: -122.1705, label: "Green Library" },
+    isOnline: true,
+    distance: 0.4,
+  },
+  {
+    id: "3",
+    name: "Emily Zhang",
+    year: "Sophomore",
+    major: "Biology",
+    photo: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop",
+    interests: ["Research", "Running", "Cooking", "Music"],
+    location: { lat: 37.4276, lng: -122.1716, label: "Arrillaga Gym" },
+    isOnline: true,
+    distance: 0.5,
+  },
+];
+
+export const mockEvents: Event[] = [
+  {
+    id: "1",
+    title: "Comedy Show at Tresidder",
+    description: "Stand-up comedy night featuring student performers",
+    location: "Tresidder Union",
+    locationCoords: { lat: 37.4268, lng: -122.1694 },
+    time: "7:00 PM",
+    date: "2026-04-24",
+    organizer: "Stanford Comedy Club",
+    attendees: ["1", "4", "7"],
+    category: "Entertainment",
+    icon: "🎭",
+  },
+  {
+    id: "2",
+    title: "CS 278 Study Group",
+    description: "Final project work session",
+    location: "Huang Engineering",
+    locationCoords: { lat: 37.4275, lng: -122.1733 },
+    time: "3:00 PM",
+    date: "2026-04-24",
+    organizer: "CS Study Group",
+    attendees: ["2", "5"],
+    category: "Academic",
+    icon: "📚",
+  },
+  {
+    id: "3",
+    title: "Sunset Yoga",
+    description: "Outdoor yoga session on the Oval",
+    location: "The Oval",
+    locationCoords: { lat: 37.4267, lng: -122.1701 },
+    time: "6:30 PM",
+    date: "2026-04-24",
+    organizer: "Stanford Wellness",
+    attendees: ["1", "3", "6"],
+    category: "Wellness",
+    icon: "🧘",
+  },
+  {
+    id: "4",
+    title: "Hackathon Kickoff",
+    description: "TreeHacks mini-hackathon",
+    location: "Arrillaga Alumni Center",
+    locationCoords: { lat: 37.4287, lng: -122.1717 },
+    time: "5:00 PM",
+    date: "2026-04-25",
+    organizer: "TreeHacks Team",
+    attendees: ["8", "9"],
+    category: "Tech",
+    icon: "💻",
+  },
+];
+
+export const mockDiscoverUsers: User[] = [
+  {
+    id: "10",
+    name: "Maya Patel",
+    year: "Sophomore",
+    major: "Symbolic Systems",
+    photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop",
+    interests: ["AI/ML", "Philosophy", "Music", "Coffee"],
+    isOnline: true,
+    distance: 0.1,
+  },
+  {
+    id: "11",
+    name: "David Kim",
+    year: "Junior",
+    major: "Computer Science",
+    photo: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop",
+    interests: ["Photography", "Hiking", "Tech"],
+    isOnline: true,
+    distance: 0.3,
+  },
+];
+
+export const mockChats: Chat[] = [
+  {
+    id: "1",
+    userId: "1",
+    userName: "Sarah Martinez",
+    userPhoto: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop",
+    lastMessage: "Coffee at CoHo?",
+    timestamp: "2 min ago",
+    unread: 1,
+    isActive: true,
+  },
+  {
+    id: "2",
+    userId: "2",
+    userName: "James Wilson",
+    userPhoto: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop",
+    lastMessage: "See you at the library!",
+    timestamp: "15 min ago",
+    unread: 0,
+  },
+  {
+    id: "3",
+    userId: "3",
+    userName: "Emily Zhang",
+    userPhoto: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop",
+    lastMessage: "Thanks for the study tips!",
+    timestamp: "1 hour ago",
+    unread: 0,
+  },
+];
+
+export const mockMessages: { [chatId: string]: Message[] } = {
+  "1": [
+    {
+      id: "1",
+      userId: "1",
+      text: "Hey! I'm at CoHo right now",
+      timestamp: "10:30 AM",
+      isMe: false,
+    },
+    {
+      id: "2",
+      userId: "me",
+      text: "Perfect timing! I was just about to grab coffee",
+      timestamp: "10:31 AM",
+      isMe: true,
+    },
+    {
+      id: "3",
+      userId: "1",
+      text: "Coffee at CoHo?",
+      timestamp: "10:32 AM",
+      isMe: false,
+    },
+  ],
+};
+
+export const leaderboardData = {
+  topUsers: [
+    { rank: 1, name: "Jordan Lee", events: 24, newConnections: 15, streak: 12 },
+    { rank: 2, name: "Taylor Swift", events: 22, newConnections: 18, streak: 10 },
+    { rank: 3, name: "Alex Chen", events: 20, newConnections: 12, streak: 8 },
+    { rank: 4, name: "Sam Rivera", events: 19, newConnections: 11, streak: 7 },
+    { rank: 5, name: "Casey Morgan", events: 18, newConnections: 14, streak: 9 },
+  ],
+  dormRankings: [
+    { rank: 1, dorm: "Roble Hall", avgEvents: 15.2 },
+    { rank: 2, dorm: "Wilbur Hall", avgEvents: 14.8 },
+    { rank: 3, dorm: "FloMo", avgEvents: 13.5 },
+  ],
+  myStats: {
+    rank: 3,
+    events: 20,
+    newConnections: 12,
+    streak: 8,
+  },
+};
+
+export const interestOptions = [
+  "AI/ML",
+  "Photography",
+  "Hiking",
+  "Coffee",
+  "Music",
+  "Art",
+  "Sports",
+  "Cooking",
+  "Reading",
+  "Gaming",
+  "Yoga",
+  "Running",
+  "Finance",
+  "Startups",
+  "Research",
+  "Theater",
+  "Dance",
+  "Film",
+  "Podcasts",
+  "Travel",
+];
