@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS profiles (
   avatar_url TEXT,
   bio TEXT,
   phone TEXT,
+  -- Onboarding data
+  interests TEXT[], -- Array of selected interests
+  social_style JSONB, -- {introvert/extrovert, planned/spontaneous, group/1on1}
+  privacy_settings JSONB, -- Privacy preferences
+  notification_settings JSONB, -- Notification preferences
+  onboarding_completed BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

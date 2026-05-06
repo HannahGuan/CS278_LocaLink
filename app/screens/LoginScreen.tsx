@@ -1,11 +1,144 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { signIn } from '../../database/auth';
 
 interface LoginScreenProps {
   onLogin: () => void;
+  onNavigateToRegister: () => void;
 }
 
-export default function LoginScreen({ onLogin }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, onNavigateToRegister }: LoginScreenProps) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showLoginForm, setShowLoginForm] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email.trim()) {
+      Alert.alert('Error', 'Please enter your email');
+      return;
+    }
+
+    if (!password) {
+      Alert.alert('Error', 'Please enter your password');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await signIn(email.toLowerCase().trim(), password);
+
+      if (result.success) {
+        onLogin();
+      } else {
+        Alert.alert('Login Failed', result.error?.message || 'Invalid email or password');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (showLoginForm) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Header */}
+            <View style={styles.formHeader}>
+              <Text style={styles.logo}>📍</Text>
+              <Text style={styles.title}>Welcome Back</Text>
+              <Text style={styles.subtitle}>Sign in to Cardinal Connect</Text>
+            </View>
+
+            {/* Login Form */}
+            <View style={styles.form}>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Stanford Email</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="your.name@stanford.edu"
+                  placeholderTextColor="#999"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  editable={!loading}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Password</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#999"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  editable={!loading}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.loginButton, loading && styles.buttonDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Sign In</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.backToOptionsButton}
+                onPress={() => setShowLoginForm(false)}
+                disabled={loading}
+              >
+                <Text style={styles.backToOptionsText}>Back to options</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={onNavigateToRegister}
+                disabled={loading}
+              >
+                <Text style={styles.registerText}>
+                  Don't have an account?{' '}
+                  <Text style={styles.registerTextBold}>Sign Up</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -40,8 +173,19 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       </View>
 
       <View style={styles.buttonSection}>
-        <TouchableOpacity style={styles.button} onPress={onLogin} activeOpacity={0.8}>
-          <Text style={styles.buttonText}>Sign in with Stanford SSO</Text>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => setShowLoginForm(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.buttonText}>Sign In with Email</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.registerButtonMain}
+          onPress={onNavigateToRegister}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.registerButtonMainText}>Create New Account</Text>
         </TouchableOpacity>
         <Text style={styles.disclaimer}>Secure login for Stanford students only</Text>
       </View>
@@ -132,10 +276,109 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
+  registerButtonMain: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#8C1515',
+  },
+  registerButtonMainText: {
+    color: '#8C1515',
+    fontSize: 17,
+    fontWeight: '600',
+  },
   disclaimer: {
     marginTop: 16,
     fontSize: 13,
     color: '#999999',
     textAlign: 'center',
+  },
+  // Login form styles
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 20,
+  },
+  formHeader: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logo: {
+    fontSize: 60,
+    marginBottom: 16,
+  },
+  form: {
+    width: '100%',
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#000000',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  loginButton: {
+    backgroundColor: '#8C1515',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 12,
+    shadowColor: '#8C1515',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  backToOptionsButton: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  backToOptionsText: {
+    fontSize: 14,
+    color: '#8C1515',
+    fontWeight: '600',
+  },
+  registerButton: {
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  registerText: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  registerTextBold: {
+    color: '#8C1515',
+    fontWeight: 'bold',
   },
 });

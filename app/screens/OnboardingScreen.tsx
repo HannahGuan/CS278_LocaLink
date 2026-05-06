@@ -8,9 +8,13 @@ import {
   ScrollView,
   TextInput,
   Switch,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { interestOptions } from '../data/mockData';
+import { supabase } from '../../database/supabase';
+import { getCurrentUser } from '../../database/auth';
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -34,6 +38,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     eventAlerts: true,
     matchOpportunities: true,
   });
+  const [loading, setLoading] = useState(false);
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests((prev) =>
@@ -47,11 +52,56 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     interest.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step < 4) {
       setStep(step + 1);
     } else {
+      // Save onboarding data to database
+      await saveOnboardingData();
+    }
+  };
+
+  const saveOnboardingData = async () => {
+    setLoading(true);
+    try {
+      const user = await getCurrentUser();
+      if (!user) {
+        Alert.alert('Error', 'No user found. Please log in again.');
+        return;
+      }
+
+      // Prepare data
+      const socialStyle = {
+        introvertExtrovert,
+        spontaneousPlanned,
+        groupOneOnOne,
+      };
+
+      // Update user profile with onboarding data
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          interests: selectedInterests,
+          social_style: socialStyle,
+          privacy_settings: privacySettings,
+          notification_settings: notifications,
+          onboarding_completed: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Error saving onboarding data:', error);
+        Alert.alert('Error', 'Failed to save your preferences. Please try again.');
+        return;
+      }
+
       onComplete();
+    } catch (error: any) {
+      console.error('Error in saveOnboardingData:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -325,15 +375,19 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
         <TouchableOpacity
           style={[
             styles.continueButton,
-            step === 1 && selectedInterests.length < 3 && styles.continueButtonDisabled,
+            (step === 1 && selectedInterests.length < 3 || loading) && styles.continueButtonDisabled,
           ]}
           onPress={handleNext}
-          disabled={step === 1 && selectedInterests.length < 3 ? true : false}
+          disabled={(step === 1 && selectedInterests.length < 3) || loading}
           activeOpacity={0.8}
         >
-          <Text style={styles.continueButtonText}>
-            {step === 4 ? 'Get Started' : 'Continue'}
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.continueButtonText}>
+              {step === 4 ? 'Get Started' : 'Continue'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
