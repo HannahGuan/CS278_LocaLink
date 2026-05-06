@@ -20,8 +20,7 @@ import OnboardingScreen from './app/screens/OnboardingScreen';
 // Main Screens
 import MapScreen from './app/screens/MapScreen';
 import DiscoverScreen from './app/screens/DiscoverScreen';
-import ChatScreen from './app/screens/ChatScreen';
-import EventsScreen from './app/screens/EventsScreen';
+import FriendsScreen from './app/screens/FriendsScreen';
 import ProfileScreen from './app/screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
@@ -63,26 +62,18 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Events"
-        component={EventsScreen}
+        name="Friends"
+        component={FriendsScreen}
         options={{
-          tabBarIcon: () => <Text style={{ fontSize: 24 }}>📅</Text>,
-          tabBarLabel: 'Events',
-        }}
-      />
-      <Tab.Screen
-        name="Messages"
-        component={ChatScreen}
-        options={{
-          tabBarIcon: () => <Text style={{ fontSize: 24 }}>💬</Text>,
-          tabBarLabel: 'Messages',
+          tabBarIcon: () => <Text style={{ fontSize: 24 }}>👥</Text>,
+          tabBarLabel: 'Friends',
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarIcon: () => <Text style={{ fontSize: 24 }}>👤</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 24 }}>⚙️</Text>,
           tabBarLabel: 'Profile',
         }}
       />

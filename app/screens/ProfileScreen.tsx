@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,143 @@ import {
   Image,
   SafeAreaView,
   Switch,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { currentUser, leaderboardData } from '../data/mockData';
+import { supabase } from '../../database/supabase';
+import { getCurrentUser, signOut } from '../../database/auth';
+
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url?: string;
+  bio?: string;
+  year?: string;
+  major?: string;
+  interests?: string[];
+  privacy_settings?: {
+    showToFriends?: boolean;
+    showToMatches?: boolean;
+    eventBased?: boolean;
+    invisible?: boolean;
+  };
+}
 
 export default function ProfileScreen({ navigation }: any) {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [visibleToFriends, setVisibleToFriends] = useState(true);
   const [discoveryMode, setDiscoveryMode] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) {
+        Alert.alert('Error', 'Please log in again');
+        return;
+      }
+
+      // Fetch user profile from database
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error loading profile:', error);
+        Alert.alert('Error', 'Failed to load profile');
+        return;
+      }
+
+      setProfile(data);
+
+      // Set privacy settings from database
+      if (data.privacy_settings) {
+        setVisibleToFriends(data.privacy_settings.showToFriends ?? true);
+        setDiscoveryMode(data.privacy_settings.showToMatches ?? true);
+        setGhostMode(data.privacy_settings.invisible ?? false);
+      }
+    } catch (error) {
+      console.error('Error in loadProfile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updatePrivacySettings = async (
+    key: string,
+    value: boolean
+  ) => {
+    if (!profile) return;
+
+    const newSettings = {
+      ...profile.privacy_settings,
+      [key]: value,
+    };
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ privacy_settings: newSettings })
+      .eq('id', profile.id);
+
+    if (error) {
+      console.error('Error updating privacy settings:', error);
+      Alert.alert('Error', 'Failed to update settings');
+    }
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await signOut();
+            if (result.success) {
+              // Navigation will be handled by App.tsx auth state listener
+            } else {
+              Alert.alert('Error', result.error?.message || 'Failed to sign out');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8C1515" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>Failed to load profile</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -28,55 +158,54 @@ export default function ProfileScreen({ navigation }: any) {
 
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <Image source={{ uri: currentUser.photo }} style={styles.avatar} />
+            {profile.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                <Text style={styles.avatarText}>
+                  {profile.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
             <TouchableOpacity style={styles.editButton}>
               <Text style={styles.editButtonText}>✏️</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.userName}>{currentUser.name}</Text>
+          <Text style={styles.userName}>{profile.name}</Text>
           <Text style={styles.userInfo}>
-            {currentUser.year} • {currentUser.major}
+            {profile.year && profile.major
+              ? `${profile.year} • ${profile.major}`
+              : profile.year || profile.major || profile.email}
           </Text>
-        </View>
-
-        <View style={styles.statsContainer}>
-          <View style={styles.statsCard}>
-            <Text style={styles.statsLabel}>YOUR STATS</Text>
-            <View style={styles.statsGrid}>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>📅</Text>
-                <Text style={styles.statNumber}>{leaderboardData.myStats.events}</Text>
-                <Text style={styles.statLabel}>Events</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>👥</Text>
-                <Text style={styles.statNumber}>
-                  {leaderboardData.myStats.newConnections}
-                </Text>
-                <Text style={styles.statLabel}>New Friends</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statIcon}>📈</Text>
-                <Text style={styles.statNumber}>#{leaderboardData.myStats.rank}</Text>
-                <Text style={styles.statLabel}>Campus Rank</Text>
-              </View>
-            </View>
-          </View>
+          {profile.bio && <Text style={styles.userBio}>{profile.bio}</Text>}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>INTERESTS</Text>
           <View style={styles.card}>
-            <View style={styles.interestsContainer}>
-              {currentUser.interests.map((interest) => (
-                <View key={interest} style={styles.interestTag}>
-                  <Text style={styles.interestText}>{interest}</Text>
+            {profile.interests && profile.interests.length > 0 ? (
+              <>
+                <View style={styles.interestsContainer}>
+                  {profile.interests.map((interest) => (
+                    <View key={interest} style={styles.interestTag}>
+                      <Text style={styles.interestText}>{interest}</Text>
+                    </View>
+                  ))}
                 </View>
-              ))}
-            </View>
-            <TouchableOpacity>
-              <Text style={styles.editInterestsButton}>Edit Interests</Text>
-            </TouchableOpacity>
+                <TouchableOpacity>
+                  <Text style={styles.editInterestsButton}>Edit Interests</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View>
+                <Text style={styles.noInterestsText}>
+                  No interests added yet
+                </Text>
+                <TouchableOpacity>
+                  <Text style={styles.editInterestsButton}>Add Interests</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
 
@@ -92,7 +221,10 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
               <Switch
                 value={Boolean(visibleToFriends)}
-                onValueChange={setVisibleToFriends}
+                onValueChange={(value) => {
+                  setVisibleToFriends(value);
+                  updatePrivacySettings('showToFriends', value);
+                }}
                 trackColor={{ false: '#E0E0E0', true: '#8C1515' }}
               />
             </View>
@@ -103,7 +235,10 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
               <Switch
                 value={Boolean(discoveryMode)}
-                onValueChange={setDiscoveryMode}
+                onValueChange={(value) => {
+                  setDiscoveryMode(value);
+                  updatePrivacySettings('showToMatches', value);
+                }}
                 trackColor={{ false: '#E0E0E0', true: '#8C1515' }}
               />
             </View>
@@ -114,7 +249,10 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
               <Switch
                 value={Boolean(ghostMode)}
-                onValueChange={setGhostMode}
+                onValueChange={(value) => {
+                  setGhostMode(value);
+                  updatePrivacySettings('invisible', value);
+                }}
                 trackColor={{ false: '#E0E0E0', true: '#8C1515' }}
               />
             </View>
@@ -140,7 +278,7 @@ export default function ProfileScreen({ navigation }: any) {
               <Text style={styles.chevron}>›</Text>
             </TouchableOpacity>
             <View style={styles.divider} />
-            <TouchableOpacity style={styles.menuRowCenter}>
+            <TouchableOpacity style={styles.menuRowCenter} onPress={handleSignOut}>
               <Text style={styles.signOutText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
@@ -154,6 +292,33 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F2F2F7',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666666',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#D32F2F',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#8C1515',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     backgroundColor: '#FFFFFF',
@@ -191,6 +356,16 @@ const styles = StyleSheet.create({
     height: 112,
     borderRadius: 56,
   },
+  avatarPlaceholder: {
+    backgroundColor: '#8C1515',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 48,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
   editButton: {
     position: 'absolute',
     bottom: 0,
@@ -214,6 +389,14 @@ const styles = StyleSheet.create({
   userInfo: {
     fontSize: 15,
     color: '#666666',
+  },
+  userBio: {
+    fontSize: 15,
+    color: '#000000',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
+    lineHeight: 20,
   },
   statsContainer: {
     padding: 16,
@@ -287,6 +470,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#8C1515',
+  },
+  noInterestsText: {
+    fontSize: 15,
+    color: '#666666',
+    marginBottom: 12,
   },
   settingRow: {
     flexDirection: 'row',

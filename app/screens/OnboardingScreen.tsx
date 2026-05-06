@@ -23,6 +23,9 @@ interface OnboardingScreenProps {
 export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [step, setStep] = useState(1);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+  const [bio, setBio] = useState('');
+  const [year, setYear] = useState('');
+  const [major, setMajor] = useState('');
   const [introvertExtrovert, setIntrovertExtrovert] = useState(50);
   const [spontaneousPlanned, setSpontaneousPlanned] = useState(50);
   const [groupOneOnOne, setGroupOneOnOne] = useState(50);
@@ -53,7 +56,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
   );
 
   const handleNext = async () => {
-    if (step < 4) {
+    if (step < 5) {
       setStep(step + 1);
     } else {
       // Save onboarding data to database
@@ -81,6 +84,9 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
       const { error } = await supabase
         .from('profiles')
         .update({
+          bio: bio.trim(),
+          year: year.trim(),
+          major: major.trim(),
           interests: selectedInterests,
           social_style: socialStyle,
           privacy_settings: privacySettings,
@@ -118,7 +124,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
           {step > 1 && <Text style={styles.backButton}>←</Text>}
         </TouchableOpacity>
         <View style={styles.progressContainer}>
-          {[1, 2, 3, 4].map((i) => (
+          {[1, 2, 3, 4, 5].map((i) => (
             <View
               key={i}
               style={[
@@ -180,6 +186,54 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
 
         {step === 2 && (
           <View>
+            <Text style={styles.title}>Tell us about yourself</Text>
+            <Text style={styles.subtitle}>Help others get to know you better</Text>
+
+            <View style={styles.formContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Bio (Optional)</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea]}
+                  placeholder="A little bit about yourself..."
+                  placeholderTextColor="#999"
+                  value={bio}
+                  onChangeText={setBio}
+                  multiline
+                  numberOfLines={4}
+                  maxLength={200}
+                />
+                <Text style={styles.charCount}>{bio.length}/200</Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Year</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., Freshman, Sophomore, Junior, Senior"
+                  placeholderTextColor="#999"
+                  value={year}
+                  onChangeText={setYear}
+                  maxLength={50}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Major (Optional)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., Computer Science"
+                  placeholderTextColor="#999"
+                  value={major}
+                  onChangeText={setMajor}
+                  maxLength={100}
+                />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {step === 3 && (
+          <View>
             <Text style={styles.title}>Your social style</Text>
             <Text style={styles.subtitle}>Help us understand how you like to connect</Text>
 
@@ -238,7 +292,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
           </View>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <View>
             <Text style={styles.title}>Privacy settings</Text>
             <Text style={styles.subtitle}>
@@ -313,7 +367,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
           </View>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <View>
             <Text style={styles.title}>Notification preferences</Text>
             <Text style={styles.subtitle}>Choose what updates you want to receive</Text>
@@ -385,7 +439,7 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <Text style={styles.continueButtonText}>
-              {step === 4 ? 'Get Started' : 'Continue'}
+              {step === 5 ? 'Get Started' : 'Continue'}
             </Text>
           )}
         </TouchableOpacity>
@@ -481,6 +535,34 @@ const styles = StyleSheet.create({
   interestButtonTextActive: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  formContainer: {
+    gap: 20,
+  },
+  inputGroup: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  textInput: {
+    backgroundColor: '#F2F2F7',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    fontSize: 17,
+    color: '#000000',
+  },
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  charCount: {
+    fontSize: 13,
+    color: '#999999',
+    textAlign: 'right',
   },
   slidersContainer: {
     gap: 32,

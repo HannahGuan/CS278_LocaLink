@@ -160,6 +160,13 @@ export const getCurrentUser = async () => {
     } = await supabase.auth.getUser();
 
     if (error) {
+      // If JWT is invalid or user doesn't exist, clear the session
+      if (error.message.includes('JWT') || error.message.includes('does not exist')) {
+        console.log('Clearing invalid session...');
+        await supabase.auth.signOut();
+        return null;
+      }
+
       // Don't log "Auth session missing" errors - this is expected when user is not logged in
       if (error.message !== 'Auth session missing!') {
         console.error('Error getting user:', error);
@@ -169,6 +176,13 @@ export const getCurrentUser = async () => {
 
     return user;
   } catch (error: any) {
+    // If JWT is invalid or user doesn't exist, clear the session
+    if (error?.message?.includes('JWT') || error?.message?.includes('does not exist')) {
+      console.log('Clearing invalid session...');
+      await supabase.auth.signOut();
+      return null;
+    }
+
     // Don't log "Auth session missing" errors - this is expected when user is not logged in
     if (error?.message !== 'Auth session missing!') {
       console.error('Error getting user:', error);
