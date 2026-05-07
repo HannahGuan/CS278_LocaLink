@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Event } from '../types';
 
 const STANFORD_FEED_URL =
-  'https://events.stanford.edu/widget/view?schools=stanford&days=31&num=50&format=rss&template=stanford-1-column-compact';
+  'https://events.stanford.edu/widget/view?schools=stanford&days=7&num=50&format=rss&template=stanford-1-column-compact';
 
 const STANFORD_DEFAULT_COORDS = { lat: 37.4275, lng: -122.1697 };
 
@@ -118,7 +118,7 @@ function ordinalSuffix(day: number): string {
   return 'th';
 }
 
-function formatDateLabel(date: Date): string {
+export function formatDateLabel(date: Date): string {
   const month = MONTH_NAMES[date.getMonth()];
   const day = date.getDate();
   return `${month} ${day}${ordinalSuffix(day)}`;

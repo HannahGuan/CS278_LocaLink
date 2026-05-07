@@ -10,11 +10,53 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { mockFriends } from '../data/mockData';
-import { useEvents } from '../api/eventClient';
+import { useEvents, formatDateLabel } from '../api/eventClient';
+import { Event } from '../types';
+
+type DiscoverTab = 'now' | 'today' | 'week';
+
+// event.time is "3:00 PM" — return minutes since midnight, or null if unparseable.
+function parseEventTimeToMinutes(time: string): number | null {
+  const match = time.match(/^(\d{1,2}):(\d{2})\s+(AM|PM)$/);
+  if (match === null) return null;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  if (match[3] === 'PM' && hours !== 12) hours += 12;
+  if (match[3] === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
+function filterEventsForTab(events: Event[], tab: DiscoverTab): Event[] {
+  const now = new Date();
+  const todayLabel = formatDateLabel(now);
+
+  if (tab === 'today') {
+    return events.filter((event) => event.date === todayLabel);
+  }
+
+  if (tab === 'week') {
+    const weekLabels = new Set<string>();
+    for (let offset = 0; offset < 7; offset++) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+      weekLabels.add(formatDateLabel(day));
+    }
+    return events.filter((event) => weekLabels.has(event.date));
+  }
+
+  // 'now': today's events that started in the last 2 hours or start in the next 30 min
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  return events.filter((event) => {
+    if (event.date !== todayLabel) return false;
+    const eventMinutes = parseEventTimeToMinutes(event.time);
+    if (eventMinutes === null) return false;
+    return eventMinutes >= nowMinutes - 120 && eventMinutes <= nowMinutes + 30;
+  });
+}
 
 export default function DiscoverScreen() {
-  const [selectedTab, setSelectedTab] = useState<'now' | 'today' | 'week'>('today');
+  const [selectedTab, setSelectedTab] = useState<DiscoverTab>('today');
   const { events, isLoading, errorMessage } = useEvents();
+  const visibleEvents = filterEventsForTab(events, selectedTab);
 
   const tabs = [
     { id: 'now' as const, label: 'Now' },
@@ -81,13 +123,19 @@ export default function DiscoverScreen() {
           </View>
         )}
 
-        {!isLoading && errorMessage === null && events.length === 0 && (
+        {!isLoading && errorMessage === null && visibleEvents.length === 0 && (
           <View style={styles.statusContainer}>
-            <Text style={styles.statusText}>No upcoming events found.</Text>
+            <Text style={styles.statusText}>
+              {selectedTab === 'now'
+                ? 'Nothing happening right now.'
+                : selectedTab === 'today'
+                ? 'No events today.'
+                : 'No events this week.'}
+            </Text>
           </View>
         )}
 
-        {events.map((event) => (
+        {visibleEvents.map((event) => (
           <View key={event.id} style={styles.eventCard}>
             <View style={styles.eventHeader}>
               {event.imageUrl !== undefined ? (
