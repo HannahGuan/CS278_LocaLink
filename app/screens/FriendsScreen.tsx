@@ -176,26 +176,6 @@ export default function FriendsScreen({ navigation }: any) {
                 <Text style={styles.emptyText}>No pending friend requests</Text>
               </View>
             </View>
-
-            {/* Suggested Friends */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>People You May Know</Text>
-              {mockDiscoverUsers.slice(0, 3).map((user) => (
-                <View key={user.id} style={styles.suggestionCard}>
-                  <Image source={{ uri: user.photo }} style={styles.suggestionAvatar} />
-                  <View style={styles.suggestionContent}>
-                    <Text style={styles.suggestionName}>{user.name}</Text>
-                    <Text style={styles.suggestionInfo}>
-                      {user.year} • {user.major}
-                    </Text>
-                    <Text style={styles.mutualText}>2 mutual friends</Text>
-                  </View>
-                  <TouchableOpacity style={styles.addButton}>
-                    <Text style={styles.addButtonText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
           </View>
         )}
       </ScrollView>
