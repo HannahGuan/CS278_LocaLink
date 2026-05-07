@@ -9,7 +9,8 @@ import {
   SafeAreaView,
   Platform,
 } from 'react-native';
-import { mockFriends, mockEvents } from '../data/mockData';
+import { mockFriends } from '../data/mockData';
+import { useEvents } from '../api/eventClient';
 
 // Dynamic import for react-native-maps to avoid crashes
 let MapView: any = null;
@@ -27,6 +28,7 @@ try {
 
 export default function MapScreen() {
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'friends' | 'events'>('all');
+  const { events } = useEvents();
 
   const filters = [
     { id: 'all' as const, label: '📍 All', icon: '📍' },
@@ -112,10 +114,13 @@ export default function MapScreen() {
 
             {/* Event Markers */}
             {(selectedFilter === 'all' || selectedFilter === 'events') &&
-              mockEvents.slice(0, 2).map((event) => (
+              events.slice(0, 2).map((event) => (
                 <Marker
                   key={event.id}
-                  coordinate={event.locationCoords}
+                  coordinate={{
+                    latitude: event.locationCoords.lat,
+                    longitude: event.locationCoords.lng,
+                  }}
                   title={event.title}
                   description={event.location}
                   pinColor="#7C3AED"
@@ -188,11 +193,15 @@ export default function MapScreen() {
         {(selectedFilter === 'all' || selectedFilter === 'events') && (
           <>
             <Text style={styles.sectionTitle}>Nearby Events</Text>
-            {mockEvents.slice(0, 2).map((event) => (
+            {events.slice(0, 2).map((event) => (
               <View key={event.id} style={styles.eventCard}>
-                <View style={styles.eventIconBox}>
-                  <Text style={styles.eventIcon}>{event.icon}</Text>
-                </View>
+                {event.imageUrl !== undefined ? (
+                  <Image source={{ uri: event.imageUrl }} style={styles.eventImage} />
+                ) : (
+                  <View style={styles.eventIconBox}>
+                    <Text style={styles.eventIcon}>{event.icon}</Text>
+                  </View>
+                )}
                 <View style={styles.eventInfo}>
                   <Text style={styles.eventTitle}>{event.title}</Text>
                   <Text style={styles.eventLocation}>{event.location}</Text>
@@ -423,6 +432,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
+  },
+  eventImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E5E5EA',
     marginRight: 12,
   },
   eventIcon: {

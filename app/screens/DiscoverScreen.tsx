@@ -7,11 +7,14 @@ import {
   ScrollView,
   Image,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
-import { mockEvents, mockFriends } from '../data/mockData';
+import { mockFriends } from '../data/mockData';
+import { useEvents } from '../api/eventClient';
 
 export default function DiscoverScreen() {
   const [selectedTab, setSelectedTab] = useState<'now' | 'today' | 'week'>('today');
+  const { events, isLoading, errorMessage } = useEvents();
 
   const tabs = [
     { id: 'now' as const, label: 'Now' },
@@ -65,12 +68,35 @@ export default function DiscoverScreen() {
             : 'This Week'}
         </Text>
 
-        {mockEvents.map((event) => (
+        {isLoading && (
+          <View style={styles.statusContainer}>
+            <ActivityIndicator size="large" color="#8C1515" />
+            <Text style={styles.statusText}>Loading Stanford events…</Text>
+          </View>
+        )}
+
+        {errorMessage !== null && !isLoading && (
+          <View style={styles.statusContainer}>
+            <Text style={styles.errorText}>Couldn’t load events: {errorMessage}</Text>
+          </View>
+        )}
+
+        {!isLoading && errorMessage === null && events.length === 0 && (
+          <View style={styles.statusContainer}>
+            <Text style={styles.statusText}>No upcoming events found.</Text>
+          </View>
+        )}
+
+        {events.map((event) => (
           <View key={event.id} style={styles.eventCard}>
             <View style={styles.eventHeader}>
-              <View style={styles.eventIconBox}>
-                <Text style={styles.eventIcon}>{event.icon}</Text>
-              </View>
+              {event.imageUrl !== undefined ? (
+                <Image source={{ uri: event.imageUrl }} style={styles.eventImage} />
+              ) : (
+                <View style={styles.eventIconBox}>
+                  <Text style={styles.eventIcon}>{event.icon}</Text>
+                </View>
+              )}
               <View style={styles.eventInfo}>
                 <Text style={styles.eventTitle}>{event.title}</Text>
                 <Text style={styles.eventDescription} numberOfLines={2}>
@@ -215,6 +241,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  eventImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#E5E5EA',
+  },
   eventIcon: {
     fontSize: 28,
   },
@@ -290,5 +322,20 @@ const styles = StyleSheet.create({
   shareButtonText: {
     fontSize: 16,
     color: '#666666',
+  },
+  statusContainer: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#8C1515',
+    textAlign: 'center',
   },
 });

@@ -8,7 +8,8 @@ import {
   Image,
   SafeAreaView,
 } from 'react-native';
-import { currentUser, mockFriends, mockEvents } from '../data/mockData';
+import { currentUser, mockFriends } from '../data/mockData';
+import { useEvents } from '../api/eventClient';
 
 interface HomeScreenProps {
   navigation: any;
@@ -16,7 +17,8 @@ interface HomeScreenProps {
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const nearbyFriends = mockFriends.filter((f) => f.distance && f.distance < 0.5);
-  const upcomingEvent = mockEvents[0];
+  const { events } = useEvents();
+  const upcomingEvent = events.length > 0 ? events[0] : null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -75,43 +77,47 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </TouchableOpacity>
 
           {/* Trending Event Card */}
-          <TouchableOpacity
-            style={styles.eventCard}
-            onPress={() => navigation.navigate('Events')}
-            activeOpacity={0.9}
-          >
-            <View>
-              <View style={styles.eventTitleRow}>
-                <Text style={styles.eventIcon}>📈</Text>
-                <Text style={styles.eventLabel}>Trending Event</Text>
-              </View>
-              <Text style={styles.eventTitle}>
-                {upcomingEvent.icon} {upcomingEvent.title}
-              </Text>
-              <View style={styles.eventDetails}>
-                <View style={styles.eventDetailRow}>
-                  <Text style={styles.eventDetailIcon}>🕐</Text>
-                  <Text style={styles.eventDetailText}>Starts in 25 min</Text>
+          {upcomingEvent !== null && (
+            <TouchableOpacity
+              style={styles.eventCard}
+              onPress={() => navigation.navigate('Events')}
+              activeOpacity={0.9}
+            >
+              <View>
+                <View style={styles.eventTitleRow}>
+                  <Text style={styles.eventIcon}>📈</Text>
+                  <Text style={styles.eventLabel}>Trending Event</Text>
                 </View>
-                <View style={styles.eventDetailRow}>
-                  <Text style={styles.eventDetailIcon}>📍</Text>
-                  <Text style={styles.eventDetailText}>{upcomingEvent.location}</Text>
+                <Text style={styles.eventTitle}>
+                  {upcomingEvent.icon} {upcomingEvent.title}
+                </Text>
+                <View style={styles.eventDetails}>
+                  <View style={styles.eventDetailRow}>
+                    <Text style={styles.eventDetailIcon}>🕐</Text>
+                    <Text style={styles.eventDetailText}>
+                      {upcomingEvent.time} • {upcomingEvent.date}
+                    </Text>
+                  </View>
+                  <View style={styles.eventDetailRow}>
+                    <Text style={styles.eventDetailIcon}>📍</Text>
+                    <Text style={styles.eventDetailText}>{upcomingEvent.location}</Text>
+                  </View>
                 </View>
               </View>
-            </View>
-            <View style={styles.eventAttendees}>
-              <View style={styles.friendAvatars}>
-                {mockFriends.slice(0, 3).map((friend, index) => (
-                  <Image
-                    key={friend.id}
-                    source={{ uri: friend.photo }}
-                    style={[styles.avatarSmall, { marginLeft: index > 0 ? -8 : 0 }]}
-                  />
-                ))}
+              <View style={styles.eventAttendees}>
+                <View style={styles.friendAvatars}>
+                  {mockFriends.slice(0, 3).map((friend, index) => (
+                    <Image
+                      key={friend.id}
+                      source={{ uri: friend.photo }}
+                      style={[styles.avatarSmall, { marginLeft: index > 0 ? -8 : 0 }]}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.attendeesText}>3 friends attending</Text>
               </View>
-              <Text style={styles.attendeesText}>3 friends attending</Text>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
 
           {/* Suggested Meetup */}
           <View style={styles.suggestedCard}>

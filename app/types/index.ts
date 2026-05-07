@@ -22,6 +22,7 @@ export interface Event {
   attendees: string[];
   category: string;
   icon: string;
+  imageUrl?: string;
 }
 
 export interface Message {
