@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,32 @@ import {
   SafeAreaView,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { mockFriends, mockDiscoverUsers } from '../data/mockData';
+import { getCurrentUser } from '../../database/auth';
+import {
+  databaseClient,
+  IncomingFriendRequest,
+  PendingFriendRequest,
+} from '../../database/databaseClient';
+import {
+  addFriendByEmail,
+  AddFriendOutcome,
+} from '../../database/friendRequests';
 
 type TabType = 'messages' | 'nearby' | 'requests';
 
 export default function FriendsScreen({ navigation }: any) {
   const [selectedTab, setSelectedTab] = useState<TabType>('messages');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<PendingFriendRequest[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
+  const [isLoadingPending, setIsLoadingPending] = useState(true);
+  const [isLoadingIncoming, setIsLoadingIncoming] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
 
   const tabs = [
     { id: 'messages' as const, label: 'Messages', icon: '💬' },
@@ -24,21 +42,160 @@ export default function FriendsScreen({ navigation }: any) {
     { id: 'requests' as const, label: 'Add Friends', icon: '➕' },
   ];
 
-  const handleWave = (userName: string) => {
-    Alert.alert('Wave Sent!', `You sent a wave to ${userName}!`);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const user = await getCurrentUser();
+      if (cancelled) {
+        return;
+      }
+      if (user === null) {
+        setIsLoadingPending(false);
+        return;
+      }
+      setCurrentUserId(user.id);
+      await Promise.all([
+        refreshPending(user.id, cancelled),
+        refreshIncoming(user.id, cancelled),
+      ]);
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshPending = async (userId: string, cancelled = false) => {
+    setIsLoadingPending(true);
+    try {
+      const requests = await databaseClient.getOutgoingPendingRequests(userId);
+      if (!cancelled) {
+        setPendingRequests(requests);
+      }
+    } catch (error) {
+      console.error('Error loading pending requests:', error);
+    } finally {
+      if (!cancelled) {
+        setIsLoadingPending(false);
+      }
+    }
   };
 
-  const handleSendRequest = () => {
-    if (!searchQuery.trim()) {
-      Alert.alert('Error', 'Please enter a Stanford email');
+  const refreshIncoming = async (userId: string, cancelled = false) => {
+    setIsLoadingIncoming(true);
+    try {
+      const requests = await databaseClient.getIncomingPendingRequests(userId);
+      if (!cancelled) {
+        setIncomingRequests(requests);
+      }
+    } catch (error) {
+      console.error('Error loading incoming requests:', error);
+    } finally {
+      if (!cancelled) {
+        setIsLoadingIncoming(false);
+      }
+    }
+  };
+
+  const handleRespondToRequest = async (
+    request: IncomingFriendRequest,
+    action: 'accept' | 'decline'
+  ) => {
+    if (currentUserId === null || respondingRequestId !== null) {
       return;
     }
-    if (!searchQuery.endsWith('@stanford.edu')) {
-      Alert.alert('Error', 'Please enter a valid @stanford.edu email');
+    setRespondingRequestId(request.id);
+    try {
+      if (action === 'accept') {
+        await databaseClient.acceptFriendRequest(request.id);
+      } else {
+        await databaseClient.declineFriendRequest(request.id);
+      }
+      await refreshIncoming(currentUserId);
+    } catch (error) {
+      console.error(`Error ${action}ing friend request:`, error);
+      Alert.alert(
+        'Something went wrong',
+        `We could not ${action} the request. Please try again in a moment.`
+      );
+    } finally {
+      setRespondingRequestId(null);
+    }
+  };
+
+  const announceOutcome = (outcome: AddFriendOutcome) => {
+    switch (outcome.kind) {
+      case 'sent':
+        Alert.alert(
+          'Friend Request Sent',
+          `${outcome.recipient.name} will see your request and can accept it.`
+        );
+        return;
+      case 'invalid_email':
+        Alert.alert(
+          'Invalid Email',
+          'Please enter a valid @stanford.edu email address.'
+        );
+        return;
+      case 'self_request':
+        Alert.alert(
+          'Heads up',
+          "You can't send a friend request to yourself."
+        );
+        return;
+      case 'user_not_found':
+        Alert.alert(
+          'Not on LocaLink yet',
+          `${outcome.email} hasn't joined the app yet. Invite them to sign up!`
+        );
+        return;
+      case 'already_friends':
+        Alert.alert(
+          'Already Friends',
+          `You and ${outcome.recipient.name} are already connected.`
+        );
+        return;
+      case 'request_pending':
+        if (outcome.direction === 'outgoing') {
+          Alert.alert(
+            'Request Pending',
+            `You already have a pending request to ${outcome.recipient.name}.`
+          );
+        } else {
+          Alert.alert(
+            'Check Your Inbox',
+            `${outcome.recipient.name} already sent you a friend request.`
+          );
+        }
+        return;
+    }
+  };
+
+  const handleSendRequest = async () => {
+    if (currentUserId === null) {
+      Alert.alert('Not signed in', 'Please log in again to send friend requests.');
       return;
     }
-    Alert.alert('Friend Request Sent!', `Request sent to ${searchQuery}`);
-    setSearchQuery('');
+    if (isSending) {
+      return;
+    }
+    setIsSending(true);
+    try {
+      const outcome = await addFriendByEmail(currentUserId, searchQuery);
+      announceOutcome(outcome);
+      if (outcome.kind === 'sent') {
+        setSearchQuery('');
+        await refreshPending(currentUserId);
+      }
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+      Alert.alert(
+        'Something went wrong',
+        'We could not send the request. Please try again in a moment.'
+      );
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -130,9 +287,9 @@ export default function FriendsScreen({ navigation }: any) {
                   </View>
                   <TouchableOpacity
                     style={styles.waveButton}
-                    onPress={() => handleWave(user.name)}
+                    onPress={() => navigation.navigate('ChatDetail', { friend: user })}
                   >
-                    <Text style={styles.waveButtonText}>👋 Send Wave</Text>
+                    <Text style={styles.waveButtonText}>💬 Send Message</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -160,21 +317,126 @@ export default function FriendsScreen({ navigation }: any) {
                   keyboardType="email-address"
                 />
                 <TouchableOpacity
-                  style={styles.searchButton}
+                  style={[
+                    styles.searchButton,
+                    isSending && styles.searchButtonDisabled,
+                  ]}
                   onPress={handleSendRequest}
+                  disabled={isSending}
                 >
-                  <Text style={styles.searchButtonText}>Send Request</Text>
+                  {isSending ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.searchButtonText}>Send Request</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
 
+            {/* Incoming Requests Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Incoming Requests</Text>
+              {isLoadingIncoming ? (
+                <View style={styles.emptyState}>
+                  <ActivityIndicator color="#8C1515" />
+                </View>
+              ) : incomingRequests.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyIcon}>📭</Text>
+                  <Text style={styles.emptyText}>No incoming friend requests</Text>
+                </View>
+              ) : (
+                incomingRequests.map((request) => {
+                  const isResponding = respondingRequestId === request.id;
+                  return (
+                    <View key={request.id} style={styles.suggestionCard}>
+                      {request.sender.avatar_url ? (
+                        <Image
+                          source={{ uri: request.sender.avatar_url }}
+                          style={styles.suggestionAvatar}
+                        />
+                      ) : (
+                        <View style={[styles.suggestionAvatar, styles.avatarFallback]}>
+                          <Text style={styles.avatarFallbackText}>
+                            {request.sender.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.suggestionContent}>
+                        <Text style={styles.suggestionName}>
+                          {request.sender.name}
+                        </Text>
+                        <Text style={styles.suggestionInfo}>
+                          {request.sender.email}
+                        </Text>
+                        <View style={styles.requestActions}>
+                          <TouchableOpacity
+                            style={[
+                              styles.acceptButton,
+                              isResponding && styles.searchButtonDisabled,
+                            ]}
+                            onPress={() => handleRespondToRequest(request, 'accept')}
+                            disabled={isResponding}
+                          >
+                            <Text style={styles.acceptButtonText}>Accept</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.declineButton,
+                              isResponding && styles.searchButtonDisabled,
+                            ]}
+                            onPress={() => handleRespondToRequest(request, 'decline')}
+                            disabled={isResponding}
+                          >
+                            <Text style={styles.declineButtonText}>Decline</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+
             {/* Pending Requests Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Pending Requests</Text>
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>📬</Text>
-                <Text style={styles.emptyText}>No pending friend requests</Text>
-              </View>
+              <Text style={styles.sectionTitle}>Sent Requests</Text>
+              {isLoadingPending ? (
+                <View style={styles.emptyState}>
+                  <ActivityIndicator color="#8C1515" />
+                </View>
+              ) : pendingRequests.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyIcon}>📬</Text>
+                  <Text style={styles.emptyText}>No pending friend requests</Text>
+                </View>
+              ) : (
+                pendingRequests.map((request) => (
+                  <View key={request.id} style={styles.suggestionCard}>
+                    {request.recipient.avatar_url ? (
+                      <Image
+                        source={{ uri: request.recipient.avatar_url }}
+                        style={styles.suggestionAvatar}
+                      />
+                    ) : (
+                      <View style={[styles.suggestionAvatar, styles.avatarFallback]}>
+                        <Text style={styles.avatarFallbackText}>
+                          {request.recipient.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.suggestionContent}>
+                      <Text style={styles.suggestionName}>
+                        {request.recipient.name}
+                      </Text>
+                      <Text style={styles.suggestionInfo}>
+                        {request.recipient.email}
+                      </Text>
+                      <Text style={styles.mutualText}>Awaiting response</Text>
+                    </View>
+                  </View>
+                ))
+              )}
             </View>
           </View>
         )}
@@ -491,5 +753,45 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#FFFFFF',
     fontWeight: '300',
+  },
+  avatarFallback: {
+    backgroundColor: '#F4E8E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarFallbackText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  searchButtonDisabled: {
+    opacity: 0.6,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  acceptButton: {
+    backgroundColor: '#8C1515',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  acceptButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  declineButton: {
+    backgroundColor: '#F2F2F7',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  declineButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666666',
   },
 });
