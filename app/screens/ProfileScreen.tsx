@@ -167,9 +167,6 @@ export default function ProfileScreen({ navigation }: any) {
                 </Text>
               </View>
             )}
-            <TouchableOpacity style={styles.editButton}>
-              <Text style={styles.editButtonText}>✏️</Text>
-            </TouchableOpacity>
           </View>
           <Text style={styles.userName}>{profile.name}</Text>
           <Text style={styles.userInfo}>
@@ -262,22 +259,6 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>ACCOUNT</Text>
           <View style={styles.card}>
-            <TouchableOpacity style={styles.menuRow}>
-              <View style={styles.menuInfo}>
-                <Text style={styles.menuTitle}>Notification Settings</Text>
-                <Text style={styles.menuDescription}>Manage your alerts</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-            <View style={styles.divider} />
-            <TouchableOpacity style={styles.menuRow}>
-              <View style={styles.menuInfo}>
-                <Text style={styles.menuTitle}>Privacy & Safety</Text>
-                <Text style={styles.menuDescription}>Block users, report issues</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-            <View style={styles.divider} />
             <TouchableOpacity style={styles.menuRowCenter} onPress={handleSignOut}>
               <Text style={styles.signOutText}>Sign Out</Text>
             </TouchableOpacity>

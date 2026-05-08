@@ -8,9 +8,15 @@ import {
   Image,
   SafeAreaView,
   Platform,
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native';
+
+const { height: WINDOW_HEIGHT } = Dimensions.get('window');
 import { mockFriends } from '../data/mockData';
 import { useEvents } from '../api/eventClient';
+import { Event } from '../types';
 
 // Dynamic import for react-native-maps to avoid crashes
 let MapView: any = null;
@@ -28,6 +34,7 @@ try {
 
 export default function MapScreen() {
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'friends' | 'events'>('all');
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const { events } = useEvents();
 
   const filters = [
@@ -158,21 +165,10 @@ export default function MapScreen() {
       </View>
 
       <ScrollView style={styles.infoSection} showsVerticalScrollIndicator={false as boolean}>
-        <Text style={styles.sectionTitle}>Hot Zones</Text>
-        {hotZones.map((zone) => (
-          <View key={zone.id} style={styles.zoneCard}>
-            <View style={[styles.zoneIcon, { backgroundColor: zone.color }]}>
-              <Text style={styles.zoneIconText}>{zone.icon}</Text>
-            </View>
-            <Text style={styles.zoneName}>{zone.name}</Text>
-            <Text style={styles.zoneUsers}>{zone.users} people</Text>
-          </View>
-        ))}
-
         {(selectedFilter === 'all' || selectedFilter === 'friends') && (
           <>
             <Text style={styles.sectionTitle}>Nearby Friends</Text>
-            {mockFriends.slice(0, 3).map((friend) => (
+            {mockFriends.slice(0, 10).map((friend) => (
               <View key={friend.id} style={styles.friendCard}>
                 <Image source={{ uri: friend.photo }} style={styles.friendAvatar} />
                 <View style={styles.friendInfo}>
@@ -193,7 +189,7 @@ export default function MapScreen() {
         {(selectedFilter === 'all' || selectedFilter === 'events') && (
           <>
             <Text style={styles.sectionTitle}>Nearby Events</Text>
-            {events.slice(0, 2).map((event) => (
+            {events.slice(0, 10).map((event) => (
               <View key={event.id} style={styles.eventCard}>
                 {event.imageUrl !== undefined ? (
                   <Image source={{ uri: event.imageUrl }} style={styles.eventImage} />
@@ -208,7 +204,7 @@ export default function MapScreen() {
                 </View>
                 <View style={styles.eventActions}>
                   <Text style={styles.eventTime}>{event.time}</Text>
-                  <TouchableOpacity>
+                  <TouchableOpacity onPress={() => setSelectedEvent(event)}>
                     <Text style={styles.detailsButton}>Details</Text>
                   </TouchableOpacity>
                 </View>
@@ -217,6 +213,95 @@ export default function MapScreen() {
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={selectedEvent !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedEvent(null)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setSelectedEvent(null)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {selectedEvent !== null && (
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+                showsVerticalScrollIndicator={true as boolean}
+                bounces={true}
+              >
+                <View style={styles.modalHero}>
+                  {selectedEvent.imageUrl !== undefined ? (
+                    <Image
+                      source={{ uri: selectedEvent.imageUrl }}
+                      style={styles.modalHeroImage}
+                    />
+                  ) : (
+                    <View style={styles.modalHeroFallback}>
+                      <Text style={styles.modalHeroIcon}>{selectedEvent.icon}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={styles.modalCloseButton}
+                    onPress={() => setSelectedEvent(null)}
+                  >
+                    <Text style={styles.modalCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalBody}>
+                  <View style={styles.modalCategoryBadge}>
+                    <Text style={styles.modalCategoryText}>
+                      {selectedEvent.icon} {selectedEvent.category}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.modalTitle}>{selectedEvent.title}</Text>
+                  <Text style={styles.modalOrganizer}>by {selectedEvent.organizer}</Text>
+
+                  <View style={styles.modalDivider} />
+
+                  <View style={styles.modalInfoRow}>
+                    <Text style={styles.modalInfoIcon}>📅</Text>
+                    <View style={styles.modalInfoContent}>
+                      <Text style={styles.modalInfoLabel}>Date</Text>
+                      <Text style={styles.modalInfoValue}>{selectedEvent.date}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalInfoRow}>
+                    <Text style={styles.modalInfoIcon}>🕒</Text>
+                    <View style={styles.modalInfoContent}>
+                      <Text style={styles.modalInfoLabel}>Time</Text>
+                      <Text style={styles.modalInfoValue}>{selectedEvent.time}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalInfoRow}>
+                    <Text style={styles.modalInfoIcon}>📍</Text>
+                    <View style={styles.modalInfoContent}>
+                      <Text style={styles.modalInfoLabel}>Location</Text>
+                      <Text style={styles.modalInfoValue}>{selectedEvent.location}</Text>
+                    </View>
+                  </View>
+
+                  {selectedEvent.description.length > 0 && (
+                    <>
+                      <View style={styles.modalDivider} />
+                      <Text style={styles.modalSectionLabel}>About</Text>
+                      <Text style={styles.modalDescription}>
+                        {selectedEvent.description}
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -467,6 +552,134 @@ const styles = StyleSheet.create({
   detailsButton: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#7C3AED',
+    color: '#8C1515',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    height: WINDOW_HEIGHT * 0.85,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalScroll: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    paddingBottom: 24,
+  },
+  modalHero: {
+    height: 180,
+    position: 'relative',
+    backgroundColor: '#F4E8E9',
+  },
+  modalHeroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalHeroFallback: {
+    flex: 1,
+    backgroundColor: '#8C1515',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalHeroIcon: {
+    fontSize: 72,
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalCategoryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F4E8E9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  modalCategoryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#000000',
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  modalOrganizer: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#E5E5EA',
+    marginVertical: 16,
+  },
+  modalInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalInfoIcon: {
+    fontSize: 20,
+    width: 32,
+  },
+  modalInfoContent: {
+    flex: 1,
+  },
+  modalInfoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8C1515',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  modalInfoValue: {
+    fontSize: 15,
+    color: '#000000',
+    marginTop: 2,
+  },
+  modalSectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666666',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  modalDescription: {
+    fontSize: 15,
+    color: '#000000',
+    lineHeight: 22,
   },
 });

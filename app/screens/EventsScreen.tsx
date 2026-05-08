@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,103 @@ import {
   Image,
   SafeAreaView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { mockFriends } from '../data/mockData';
 import { useEvents } from '../api/eventClient';
+import { getCurrentUser } from '../../database/auth';
+import { databaseClient } from '../../database/databaseClient';
+import { Event } from '../types';
 
 export default function EventsScreen({ navigation }: any) {
   const [selectedTab, setSelectedTab] = useState<'now' | 'today' | 'week'>('now');
   const { events, isLoading, errorMessage } = useEvents();
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [rsvpedEventIds, setRsvpedEventIds] = useState<Set<string>>(new Set());
+  const [pendingRsvpEventId, setPendingRsvpEventId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const user = await getCurrentUser();
+      if (cancelled || user === null) {
+        return;
+      }
+      setCurrentUserId(user.id);
+      try {
+        const ids = await databaseClient.getMyRsvpEventIds(user.id);
+        if (!cancelled) {
+          setRsvpedEventIds(ids);
+        }
+      } catch (error) {
+        console.error('Error loading RSVPs:', error);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleToggleRsvp = async (event: Event) => {
+    if (pendingRsvpEventId !== null) {
+      return;
+    }
+
+    let userId = currentUserId;
+    if (userId === null) {
+      const user = await getCurrentUser();
+      if (user === null) {
+        Alert.alert('Not signed in', 'Please log in again to RSVP.');
+        return;
+      }
+      userId = user.id;
+      setCurrentUserId(userId);
+    }
+
+    const isGoing = rsvpedEventIds.has(event.id);
+    setPendingRsvpEventId(event.id);
+    setRsvpedEventIds((prev) => {
+      const next = new Set(prev);
+      if (isGoing) {
+        next.delete(event.id);
+      } else {
+        next.add(event.id);
+      }
+      return next;
+    });
+    try {
+      if (isGoing) {
+        await databaseClient.deleteEventRsvp(userId, event.id);
+        console.log('[RSVP] removed', event.id);
+      } else {
+        await databaseClient.createEventRsvp(
+          userId,
+          event.id,
+          event.title,
+          event.date,
+          event.location
+        );
+        console.log('[RSVP] created', event.id);
+      }
+    } catch (error) {
+      console.error('[RSVP] error toggling:', error);
+      setRsvpedEventIds((prev) => {
+        const next = new Set(prev);
+        if (isGoing) {
+          next.add(event.id);
+        } else {
+          next.delete(event.id);
+        }
+        return next;
+      });
+      const message =
+        error instanceof Error ? error.message : 'Please try again in a moment.';
+      Alert.alert('Could not update RSVP', message);
+    } finally {
+      setPendingRsvpEventId(null);
+    }
+  };
 
   const tabs = [
     { id: 'now' as const, label: 'Happening Now' },
@@ -116,52 +206,79 @@ export default function EventsScreen({ navigation }: any) {
           </View>
         )}
 
-        {events.map((event) => (
-          <View key={event.id} style={styles.eventCard}>
-            <View style={styles.eventHeader}>
-              {event.imageUrl !== undefined ? (
-                <Image source={{ uri: event.imageUrl }} style={styles.eventImage} />
-              ) : (
-                <View style={styles.eventIconBox}>
-                  <Text style={styles.eventIcon}>{event.icon}</Text>
+        {events.map((event) => {
+          const isGoing = rsvpedEventIds.has(event.id);
+          const isPending = pendingRsvpEventId === event.id;
+          const attendeeCount = event.attendees.length + (isGoing ? 1 : 0);
+          return (
+            <View key={event.id} style={styles.eventCard}>
+              <View style={styles.eventHeader}>
+                {event.imageUrl !== undefined ? (
+                  <Image source={{ uri: event.imageUrl }} style={styles.eventImage} />
+                ) : (
+                  <View style={styles.eventIconBox}>
+                    <Text style={styles.eventIcon}>{event.icon}</Text>
+                  </View>
+                )}
+                <View style={styles.eventInfo}>
+                  <Text style={styles.eventTitle}>{event.title}</Text>
+                  <Text style={styles.eventDescription}>{event.description}</Text>
+                  <Text style={styles.eventDetail}>📍 {event.location}</Text>
+                  <Text style={styles.eventDetail}>
+                    🕐 {event.time} • {event.date}
+                  </Text>
                 </View>
-              )}
-              <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>{event.title}</Text>
-                <Text style={styles.eventDescription}>{event.description}</Text>
-                <Text style={styles.eventDetail}>📍 {event.location}</Text>
-                <Text style={styles.eventDetail}>
-                  🕐 {event.time} • {event.date}
-                </Text>
               </View>
-            </View>
 
-            <View style={styles.eventFooter}>
-              <View style={styles.attendeesRow}>
-                <View style={styles.attendeesAvatars}>
-                  {mockFriends.slice(0, 3).map((friend, index) => (
-                    <Image
-                      key={friend.id}
-                      source={{ uri: friend.photo }}
-                      style={[styles.attendeeAvatar, { marginLeft: index > 0 ? -8 : 0 }]}
-                    />
-                  ))}
+              <View style={styles.eventFooter}>
+                <View style={styles.attendeesRow}>
+                  <View style={styles.attendeesAvatars}>
+                    {mockFriends.slice(0, 3).map((friend, index) => (
+                      <Image
+                        key={friend.id}
+                        source={{ uri: friend.photo }}
+                        style={[styles.attendeeAvatar, { marginLeft: index > 0 ? -8 : 0 }]}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.attendeesText}>
+                    {attendeeCount} attending
+                  </Text>
                 </View>
-                <Text style={styles.attendeesText}>
-                  {event.attendees.length} attending
-                </Text>
-              </View>
-              <View style={styles.eventActions}>
-                <TouchableOpacity style={styles.rsvpButton}>
-                  <Text style={styles.rsvpButtonText}>RSVP</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.shareButton}>
-                  <Text style={styles.shareButtonText}>⋮</Text>
-                </TouchableOpacity>
+                <View style={styles.eventActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.rsvpButton,
+                      isGoing && styles.rsvpButtonGoing,
+                      isPending && styles.rsvpButtonDisabled,
+                    ]}
+                    onPress={() => handleToggleRsvp(event)}
+                    disabled={isPending}
+                  >
+                    {isPending ? (
+                      <ActivityIndicator
+                        color={isGoing ? '#8C1515' : '#FFFFFF'}
+                        size="small"
+                      />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.rsvpButtonText,
+                          isGoing && styles.rsvpButtonTextGoing,
+                        ]}
+                      >
+                        {isGoing ? '✓ Going' : 'RSVP'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.shareButton}>
+                    <Text style={styles.shareButtonText}>⋮</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -369,11 +486,25 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 10,
+    minWidth: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rsvpButtonGoing: {
+    backgroundColor: '#F4E8E9',
+    borderWidth: 1,
+    borderColor: '#8C1515',
+  },
+  rsvpButtonDisabled: {
+    opacity: 0.7,
   },
   rsvpButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  rsvpButtonTextGoing: {
+    color: '#8C1515',
   },
   shareButton: {
     backgroundColor: '#F2F2F7',

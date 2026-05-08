@@ -145,6 +145,52 @@ export class DatabaseClient {
       throw new DatabaseError(`Failed to decline friend request: ${error.message}`, error);
     }
   }
+
+  async getMyRsvpEventIds(userId: string): Promise<Set<string>> {
+    const { data, error } = await this.client
+      .from('event_rsvps')
+      .select('event_id')
+      .eq('user_id', userId);
+
+    if (error !== null) {
+      throw new DatabaseError(`Failed to fetch RSVPs: ${error.message}`, error);
+    }
+    return new Set((data ?? []).map((row) => row.event_id as string));
+  }
+
+  async createEventRsvp(
+    userId: string,
+    eventId: string,
+    eventTitle: string,
+    eventDate: string,
+    eventLocation: string
+  ): Promise<void> {
+    const { error } = await this.client
+      .from('event_rsvps')
+      .insert({
+        user_id: userId,
+        event_id: eventId,
+        event_title: eventTitle,
+        event_date: eventDate,
+        event_location: eventLocation,
+      });
+
+    if (error !== null) {
+      throw new DatabaseError(`Failed to create RSVP: ${error.message}`, error);
+    }
+  }
+
+  async deleteEventRsvp(userId: string, eventId: string): Promise<void> {
+    const { error } = await this.client
+      .from('event_rsvps')
+      .delete()
+      .eq('user_id', userId)
+      .eq('event_id', eventId);
+
+    if (error !== null) {
+      throw new DatabaseError(`Failed to remove RSVP: ${error.message}`, error);
+    }
+  }
 }
 
 export const databaseClient = new DatabaseClient();
