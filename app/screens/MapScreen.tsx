@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,31 +11,110 @@ import {
   Modal,
   Pressable,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
+import WebView from 'react-native-webview';
+import * as Location from 'expo-location';
 
 const { height: WINDOW_HEIGHT } = Dimensions.get('window');
 import { mockFriends } from '../data/mockData';
 import { useEvents } from '../api/eventClient';
 import { Event } from '../types';
 
-// Dynamic import for react-native-maps to avoid crashes
-let MapView: any = null;
-let Marker: any = null;
-let PROVIDER_DEFAULT: any = null;
+// Generate HTML for Leaflet map
+const generateMapHTML = (
+  friendsData: typeof mockFriends,
+  eventsData: Event[],
+  filter: 'all' | 'friends' | 'events',
+  userLat: number,
+  userLng: number
+) => {
+  const markers: string[] = [];
 
-try {
-  const maps = require('react-native-maps');
-  MapView = maps.default;
-  Marker = maps.Marker;
-  PROVIDER_DEFAULT = maps.PROVIDER_DEFAULT;
-} catch (error) {
-  console.log('react-native-maps not available, using fallback');
-}
+  // Add user location marker
+  markers.push(`
+    L.marker([${userLat}, ${userLng}], {
+      icon: L.divIcon({
+        className: 'custom-marker',
+        html: '<div style="background-color: #8C1515; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+        iconSize: [26, 26]
+      })
+    }).addTo(map).bindPopup('<b>You</b><br>Your current location');
+  `);
+
+  // Add friend markers
+  if (filter === 'all' || filter === 'friends') {
+    friendsData.forEach((friend) => {
+      if (friend.location) {
+        markers.push(`
+          L.marker([${friend.location.lat}, ${friend.location.lng}], {
+            icon: L.divIcon({
+              className: 'custom-marker',
+              html: '<div style="background-color: #10B981; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>',
+              iconSize: [20, 20]
+            })
+          }).addTo(map).bindPopup('<b>${friend.name.replace(/'/g, "\\'")}</b><br>${friend.location.label.replace(/'/g, "\\'")}');
+        `);
+      }
+    });
+  }
+
+  // Add event markers
+  if (filter === 'all' || filter === 'events') {
+    eventsData.slice(0, 10).forEach((event) => {
+      markers.push(`
+        L.marker([${event.locationCoords.lat}, ${event.locationCoords.lng}], {
+          icon: L.divIcon({
+            className: 'custom-marker',
+            html: '<div style="background-color: #7C3AED; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>',
+            iconSize: [20, 20]
+          })
+        }).addTo(map).bindPopup('<b>${event.title.replace(/'/g, "\\'")}</b><br>${event.location.replace(/'/g, "\\'")}');
+      `);
+    });
+  }
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { width: 100%; height: 100vh; }
+        .custom-marker { background: none; border: none; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var map = L.map('map', {
+          zoomControl: true,
+          attributionControl: false
+        }).setView([${userLat}, ${userLng}], 15);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19
+        }).addTo(map);
+
+        ${markers.join('\n')}
+      </script>
+    </body>
+    </html>
+  `;
+};
 
 export default function MapScreen() {
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'friends' | 'events'>('all');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const { events } = useEvents();
+  const webViewRef = useRef<WebView>(null);
+
+  // User location state
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationLoading, setLocationLoading] = useState(true);
 
   const filters = [
     { id: 'all' as const, label: '📍 All', icon: '📍' },
@@ -43,11 +122,40 @@ export default function MapScreen() {
     { id: 'events' as const, label: '📅 Events', icon: '📅' },
   ];
 
-  const hotZones = [
-    { id: 'library', name: 'Green Library', icon: '📚', users: 45, color: '#3B82F6' },
-    { id: 'gym', name: 'Arrillaga Gym', icon: '💪', users: 32, color: '#10B981' },
-    { id: 'coho', name: 'CoHo', icon: '☕', users: 28, color: '#F97316' },
-  ];
+  // Get user location on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('Location permission denied');
+          // Default to Stanford campus if permission denied
+          setUserLocation({ latitude: 37.4275, longitude: -122.1697 });
+          setLocationLoading(false);
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({});
+        setUserLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+      } catch (error) {
+        console.log('Error getting location:', error);
+        // Default to Stanford campus if error
+        setUserLocation({ latitude: 37.4275, longitude: -122.1697 });
+      } finally {
+        setLocationLoading(false);
+      }
+    })();
+  }, []);
+
+  // Reload map when filter changes
+  useEffect(() => {
+    if (webViewRef.current && userLocation) {
+      webViewRef.current.reload();
+    }
+  }, [selectedFilter, userLocation]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -81,71 +189,28 @@ export default function MapScreen() {
       </View>
 
       <View style={styles.mapContainer}>
-        {MapView ? (
-          <MapView
-            provider={PROVIDER_DEFAULT}
-            style={styles.map}
-            initialRegion={{
-              latitude: 37.4275,
-              longitude: -122.1697,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            {/* Current User Marker */}
-            <Marker
-              coordinate={{ latitude: 37.4275, longitude: -122.1697 }}
-              title="You"
-              pinColor="#8C1515"
-            />
-
-            {/* Friend Markers */}
-            {(selectedFilter === 'all' || selectedFilter === 'friends') &&
-              mockFriends.map((friend) =>
-                friend.location ? (
-                  <Marker
-                    key={friend.id}
-                    coordinate={{
-                      latitude: friend.location.lat,
-                      longitude: friend.location.lng,
-                    }}
-                    title={friend.name}
-                    description={friend.location.label}
-                  >
-                    <View style={styles.friendMarker}>
-                      <Image source={{ uri: friend.photo }} style={styles.markerImage} />
-                    </View>
-                  </Marker>
-                ) : null
-              )}
-
-            {/* Event Markers */}
-            {(selectedFilter === 'all' || selectedFilter === 'events') &&
-              events.slice(0, 2).map((event) => (
-                <Marker
-                  key={event.id}
-                  coordinate={{
-                    latitude: event.locationCoords.lat,
-                    longitude: event.locationCoords.lng,
-                  }}
-                  title={event.title}
-                  description={event.location}
-                  pinColor="#7C3AED"
-                />
-              ))}
-          </MapView>
-        ) : (
-          <View style={styles.mapPlaceholder}>
-            <Text style={styles.mapPlaceholderTitle}>🗺️ Campus Map</Text>
-            <Text style={styles.mapPlaceholderText}>
-              Map view will be available after running:
-            </Text>
-            <Text style={styles.mapPlaceholderCode}>npx expo prebuild</Text>
-            <Text style={styles.mapPlaceholderCode}>npx expo run:ios</Text>
-            <Text style={styles.mapPlaceholderSubtext}>
-              For now, see the list below for nearby friends and events.
-            </Text>
+        {locationLoading || !userLocation ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#8C1515" />
+            <Text style={styles.loadingText}>Loading map...</Text>
           </View>
+        ) : (
+          <WebView
+            ref={webViewRef}
+            originWhitelist={['*']}
+            source={{
+              html: generateMapHTML(
+                mockFriends,
+                events,
+                selectedFilter,
+                userLocation.latitude,
+                userLocation.longitude
+              )
+            }}
+            style={styles.map}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+          />
         )}
 
         <View style={styles.legend}>
@@ -310,6 +375,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F2F2F7',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666666',
   },
   header: {
     backgroundColor: '#FFFFFF',
