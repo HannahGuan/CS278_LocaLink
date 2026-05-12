@@ -145,8 +145,8 @@ export default function FriendsScreen({ navigation }: any) {
         return;
       case 'user_not_found':
         Alert.alert(
-          'Not on LocaLink yet',
-          `${outcome.email} hasn't joined the app yet. Invite them to sign up!`
+          'Not on LocaLink Yet',
+          `${outcome.email} hasn't joined the app yet. Invite them to sign up and try adding them again!`
         );
         return;
       case 'already_friends':

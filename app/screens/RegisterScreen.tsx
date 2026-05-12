@@ -71,11 +71,11 @@ export default function RegisterScreen({
 
       if (result.success) {
         Alert.alert(
-          'Success',
-          'Account created successfully! Please check your email to verify your account.',
+          'Check Your Email! 📧',
+          `We've sent a verification link to ${email}\n\nPlease check your inbox and click the link to verify your account. After verification, you can sign in to LocaLink.\n\n💡 Tip: Check your spam folder if you don't see the email.`,
           [
             {
-              text: 'OK',
+              text: 'Got it!',
               onPress: onRegister,
             },
           ]

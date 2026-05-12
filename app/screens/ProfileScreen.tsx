@@ -10,6 +10,10 @@ import {
   Switch,
   ActivityIndicator,
   Alert,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { supabase } from '../../database/supabase';
 import { getCurrentUser, signOut } from '../../database/auth';
@@ -37,6 +41,13 @@ export default function ProfileScreen({ navigation }: any) {
   const [visibleToFriends, setVisibleToFriends] = useState(true);
   const [discoveryMode, setDiscoveryMode] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [editedBio, setEditedBio] = useState('');
+  const [isEditingInterests, setIsEditingInterests] = useState(false);
+  const [editedInterests, setEditedInterests] = useState<string[]>([]);
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [editedYear, setEditedYear] = useState('');
+  const [editedMajor, setEditedMajor] = useState('');
 
   useEffect(() => {
     loadProfile();
@@ -100,6 +111,88 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
+  const handleEditBio = () => {
+    setEditedBio(profile?.bio || '');
+    setIsEditingBio(true);
+  };
+
+  const handleSaveBio = async () => {
+    if (!profile) return;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ bio: editedBio.trim() })
+      .eq('id', profile.id);
+
+    if (error) {
+      console.error('Error updating bio:', error);
+      Alert.alert('Error', 'Failed to update bio');
+    } else {
+      setProfile({ ...profile, bio: editedBio.trim() });
+      setIsEditingBio(false);
+      Alert.alert('Success', 'Bio updated successfully');
+    }
+  };
+
+  const handleEditInterests = () => {
+    setEditedInterests(profile?.interests || []);
+    setIsEditingInterests(true);
+  };
+
+  const handleEditInfo = () => {
+    setEditedYear(profile?.year || '');
+    setEditedMajor(profile?.major || '');
+    setIsEditingInfo(true);
+  };
+
+  const handleSaveInfo = async () => {
+    if (!profile) return;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        year: editedYear.trim(),
+        major: editedMajor.trim(),
+      })
+      .eq('id', profile.id);
+
+    if (error) {
+      console.error('Error updating info:', error);
+      Alert.alert('Error', 'Failed to update information');
+    } else {
+      setProfile({
+        ...profile,
+        year: editedYear.trim(),
+        major: editedMajor.trim(),
+      });
+      setIsEditingInfo(false);
+      Alert.alert('Success', 'Information updated successfully');
+    }
+  };
+
+  const handleSaveInterests = async () => {
+    if (!profile) return;
+
+    if (editedInterests.length < 3) {
+      Alert.alert('Error', 'Please select at least 3 interests');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ interests: editedInterests })
+      .eq('id', profile.id);
+
+    if (error) {
+      console.error('Error updating interests:', error);
+      Alert.alert('Error', 'Failed to update interests');
+    } else {
+      setProfile({ ...profile, interests: editedInterests });
+      setIsEditingInterests(false);
+      Alert.alert('Success', 'Interests updated successfully');
+    }
+  };
+
   const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
@@ -151,9 +244,6 @@ export default function ProfileScreen({ navigation }: any) {
       <ScrollView showsVerticalScrollIndicator={false as boolean}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.settingsIcon}>⚙️</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.profileSection}>
@@ -169,12 +259,26 @@ export default function ProfileScreen({ navigation }: any) {
             )}
           </View>
           <Text style={styles.userName}>{profile.name}</Text>
-          <Text style={styles.userInfo}>
-            {profile.year && profile.major
-              ? `${profile.year} • ${profile.major}`
-              : profile.year || profile.major || profile.email}
-          </Text>
-          {profile.bio && <Text style={styles.userBio}>{profile.bio}</Text>}
+          <View style={styles.infoSection}>
+            <Text style={styles.userInfo}>
+              {profile.year && profile.major
+                ? `${profile.year} • ${profile.major}`
+                : profile.year || profile.major || 'No year or major added'}
+            </Text>
+            <TouchableOpacity onPress={handleEditInfo}>
+              <Text style={styles.editInfoButton}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.bioSection}>
+            {profile.bio ? (
+              <Text style={styles.userBio}>{profile.bio}</Text>
+            ) : (
+              <Text style={styles.noBioText}>No bio added yet</Text>
+            )}
+            <TouchableOpacity onPress={handleEditBio} style={styles.editBioButton}>
+              <Text style={styles.editBioText}>Edit Bio</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -189,7 +293,7 @@ export default function ProfileScreen({ navigation }: any) {
                     </View>
                   ))}
                 </View>
-                <TouchableOpacity>
+                <TouchableOpacity onPress={handleEditInterests}>
                   <Text style={styles.editInterestsButton}>Edit Interests</Text>
                 </TouchableOpacity>
               </>
@@ -198,7 +302,7 @@ export default function ProfileScreen({ navigation }: any) {
                 <Text style={styles.noInterestsText}>
                   No interests added yet
                 </Text>
-                <TouchableOpacity>
+                <TouchableOpacity onPress={handleEditInterests}>
                   <Text style={styles.editInterestsButton}>Add Interests</Text>
                 </TouchableOpacity>
               </View>
@@ -265,6 +369,168 @@ export default function ProfileScreen({ navigation }: any) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Bio Edit Modal */}
+      <Modal
+        visible={isEditingBio}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsEditingBio(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => setIsEditingBio(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+              style={styles.modalContent}
+            >
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setIsEditingBio(false)}>
+                  <Text style={styles.modalCancelButton}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Edit Bio</Text>
+                <TouchableOpacity onPress={handleSaveBio}>
+                  <Text style={styles.modalSaveButton}>Save</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={styles.bioInput}
+                placeholder="Tell others about yourself..."
+                value={editedBio}
+                onChangeText={setEditedBio}
+                multiline
+                maxLength={200}
+                textAlignVertical="top"
+                autoFocus
+              />
+              <Text style={styles.characterCount}>
+                {editedBio.length}/200 characters
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Interests Edit Modal */}
+      <Modal
+        visible={isEditingInterests}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsEditingInterests(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setIsEditingInterests(false)}>
+                <Text style={styles.modalCancelButton}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Edit Interests</Text>
+              <TouchableOpacity onPress={handleSaveInterests}>
+                <Text style={styles.modalSaveButton}>Save</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Select at least 3 interests ({editedInterests.length} selected)
+            </Text>
+            <ScrollView style={styles.interestsScrollView}>
+              <View style={styles.interestsGrid}>
+                {require('../data/mockData').interestOptions.map((interest: string) => {
+                  const isSelected = editedInterests.includes(interest);
+                  return (
+                    <TouchableOpacity
+                      key={interest}
+                      style={[
+                        styles.interestButton,
+                        isSelected && styles.interestButtonSelected,
+                      ]}
+                      onPress={() => {
+                        if (isSelected) {
+                          setEditedInterests(editedInterests.filter((i) => i !== interest));
+                        } else {
+                          setEditedInterests([...editedInterests, interest]);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.interestButtonText,
+                          isSelected && styles.interestButtonTextSelected,
+                        ]}
+                      >
+                        {interest}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Year & Major Edit Modal */}
+      <Modal
+        visible={isEditingInfo}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsEditingInfo(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => setIsEditingInfo(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+              style={styles.modalContent}
+            >
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setIsEditingInfo(false)}>
+                  <Text style={styles.modalCancelButton}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Edit Information</Text>
+                <TouchableOpacity onPress={handleSaveInfo}>
+                  <Text style={styles.modalSaveButton}>Save</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Year</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., Freshman, Sophomore, Junior, Senior"
+                  value={editedYear}
+                  onChangeText={setEditedYear}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Major</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., Computer Science, Biology, Economics"
+                  value={editedMajor}
+                  onChangeText={setEditedMajor}
+                  autoCapitalize="words"
+                />
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -307,18 +573,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   title: {
     fontSize: 34,
     fontWeight: '700',
     color: '#000000',
     letterSpacing: -0.5,
-  },
-  settingsIcon: {
-    fontSize: 24,
   },
   profileSection: {
     backgroundColor: '#FFFFFF',
@@ -512,5 +772,135 @@ const styles = StyleSheet.create({
   signOutText: {
     fontSize: 17,
     color: '#8C1515',
+  },
+  bioSection: {
+    marginTop: 12,
+    alignItems: 'center',
+    width: '100%',
+  },
+  noBioText: {
+    fontSize: 15,
+    color: '#999999',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  editBioButton: {
+    marginTop: 8,
+  },
+  editBioText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalOverlayTouchable: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+    minHeight: 300,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  modalCancelButton: {
+    fontSize: 16,
+    color: '#666666',
+  },
+  modalSaveButton: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  modalSubtitle: {
+    fontSize: 15,
+    color: '#666666',
+    marginBottom: 16,
+  },
+  bioInput: {
+    backgroundColor: '#F2F2F7',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    minHeight: 120,
+    marginBottom: 8,
+  },
+  characterCount: {
+    fontSize: 13,
+    color: '#999999',
+    textAlign: 'right',
+  },
+  interestsScrollView: {
+    maxHeight: 400,
+  },
+  interestsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  interestButton: {
+    backgroundColor: '#F2F2F7',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  interestButtonSelected: {
+    backgroundColor: '#8C1515',
+    borderColor: '#8C1515',
+  },
+  interestButtonText: {
+    fontSize: 15,
+    color: '#000000',
+  },
+  interestButtonTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  infoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  editInfoButton: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  textInput: {
+    backgroundColor: '#F2F2F7',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#000000',
   },
 });

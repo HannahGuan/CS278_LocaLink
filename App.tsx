@@ -97,6 +97,16 @@ export default function App() {
         console.log('Auth state changed:', event);
         if (session?.user) {
           setIsAuthenticated(true);
+          // Check if user has completed onboarding
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('onboarding_completed')
+            .eq('id', session.user.id)
+            .single();
+
+          if (!error && data) {
+            setHasCompletedOnboarding(data.onboarding_completed || false);
+          }
         } else {
           setIsAuthenticated(false);
           setHasCompletedOnboarding(false);
@@ -114,8 +124,16 @@ export default function App() {
       const user = await getCurrentUser();
       if (user) {
         setIsAuthenticated(true);
-        // Here you could also check if user has completed onboarding
-        // by fetching their profile from the database
+        // Check if user has completed onboarding
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('onboarding_completed')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && data) {
+          setHasCompletedOnboarding(data.onboarding_completed || false);
+        }
       }
     } catch (error) {
       // Silently handle - no need to log expected "no user" state
