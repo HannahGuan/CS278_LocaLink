@@ -25,6 +25,13 @@ import {
 } from '../../database/friendRequests';
 import { getFriends } from '../../database/friends';
 import { FriendWithDetails } from '../../types';
+import { Profile } from '../types';
+import ChatDetailScreen from './ChatDetailScreen';
+import {
+  getUnreadCountsByFriend,
+  subscribeToAllMessages,
+} from '../../database/messages';
+import { useUnread } from '../contexts/UnreadContext';
 
 type TabType = 'friends' | 'nearby';
 
@@ -41,6 +48,9 @@ export default function FriendsScreen({ navigation }: any) {
   const [isSending, setIsSending] = useState(false);
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [chatFriend, setChatFriend] = useState<Profile | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Map<string, number>>(new Map());
+  const { refreshUnread } = useUnread();
 
   const tabs = [
     { id: 'friends' as const, label: 'Friends', icon: '👥' },
@@ -55,7 +65,9 @@ export default function FriendsScreen({ navigation }: any) {
         return;
       }
       if (user === null) {
+        setIsLoadingFriends(false);
         setIsLoadingPending(false);
+        setIsLoadingIncoming(false);
         return;
       }
       setCurrentUserId(user.id);
@@ -63,13 +75,32 @@ export default function FriendsScreen({ navigation }: any) {
         refreshFriends(user.id, cancelled),
         refreshPending(user.id, cancelled),
         refreshIncoming(user.id, cancelled),
+        refreshUnreadCounts(user.id),
       ]);
+
+      // Subscribe to new messages for real-time unread updates
+      const unsubscribe = subscribeToAllMessages(user.id, () => {
+        refreshUnreadCounts(user.id);
+      });
+
+      return () => {
+        unsubscribe();
+      };
     };
     load();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const refreshUnreadCounts = async (userId: string) => {
+    try {
+      const counts = await getUnreadCountsByFriend(userId);
+      setUnreadCounts(counts);
+    } catch (error) {
+      console.error('Error loading unread counts:', error);
+    }
+  };
 
   const refreshFriends = async (userId: string, cancelled = false) => {
     setIsLoadingFriends(true);
@@ -279,33 +310,60 @@ export default function FriendsScreen({ navigation }: any) {
                 <Text style={styles.emptySubtext}>Tap the + button to add friends</Text>
               </View>
             ) : (
-              friends.map((friend) => (
-                <View key={friend.id} style={styles.friendCard}>
-                  {friend.friend.avatar_url ? (
-                    <Image
-                      source={{ uri: friend.friend.avatar_url }}
-                      style={styles.friendAvatar}
-                    />
-                  ) : (
-                    <View style={[styles.friendAvatar, styles.avatarFallback]}>
-                      <Text style={styles.avatarFallbackText}>
-                        {friend.friend.name.charAt(0).toUpperCase()}
-                      </Text>
+              friends.map((friend) => {
+                const unreadCount = unreadCounts.get(friend.friend.id) || 0;
+                return (
+                  <View key={friend.id} style={styles.friendCard}>
+                    <View style={styles.avatarContainer}>
+                      {friend.friend.avatar_url ? (
+                        <Image
+                          source={{ uri: friend.friend.avatar_url }}
+                          style={styles.friendAvatar}
+                        />
+                      ) : (
+                        <View style={[styles.friendAvatar, styles.avatarFallback]}>
+                          <Text style={styles.avatarFallbackText}>
+                            {friend.friend.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      {unreadCount > 0 && (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadBadgeText}>
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                  <View style={styles.friendContent}>
-                    <Text style={styles.friendName}>{friend.friend.name}</Text>
-                    <Text style={styles.friendInfo}>
-                      {friend.friend.year} • {friend.friend.major}
-                    </Text>
-                    {friend.friend.bio && (
-                      <Text style={styles.friendBio} numberOfLines={1}>
-                        {friend.friend.bio}
+                    <View style={styles.friendContent}>
+                      <Text style={styles.friendName}>{friend.friend.name}</Text>
+                      <Text style={styles.friendInfo}>
+                        {friend.friend.year} • {friend.friend.major}
                       </Text>
-                    )}
+                      {friend.friend.bio && (
+                        <Text style={styles.friendBio} numberOfLines={1}>
+                          {friend.friend.bio}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={styles.messageIconButton}
+                      onPress={() => {
+                        setChatFriend(friend.friend);
+                        // Refresh unread counts after opening chat
+                        if (currentUserId) {
+                          setTimeout(() => {
+                            refreshUnreadCounts(currentUserId);
+                            refreshUnread(); // Refresh tab badge
+                          }, 1000);
+                        }
+                      }}
+                    >
+                      <Text style={styles.messageIcon}>💬</Text>
+                    </TouchableOpacity>
                   </View>
-                </View>
-              ))
+                );
+              })
             )}
           </View>
         )}
@@ -510,6 +568,42 @@ export default function FriendsScreen({ navigation }: any) {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* Chat Modal */}
+      {chatFriend && currentUserId && (
+        <Modal
+          visible={true}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setChatFriend(null)}
+        >
+          <ChatDetailScreen
+            route={{
+              params: {
+                friend: chatFriend,
+                currentUserId: currentUserId,
+              },
+            }}
+            navigation={{
+              setOptions: () => {},
+              goBack: () => setChatFriend(null),
+            }}
+          />
+          <TouchableOpacity
+            style={styles.chatCloseButton}
+            onPress={() => {
+              setChatFriend(null);
+              // Refresh unread counts when closing chat
+              if (currentUserId) {
+                refreshUnreadCounts(currentUserId);
+                refreshUnread(); // Refresh tab badge
+              }
+            }}
+          >
+            <Text style={styles.chatCloseText}>✕ Close</Text>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -877,11 +971,33 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
   },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
   friendAvatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    marginRight: 12,
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF3B30',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  unreadBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   friendContent: {
     flex: 1,
@@ -934,5 +1050,32 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
+  },
+  messageIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F4E8E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  messageIcon: {
+    fontSize: 20,
+  },
+  chatCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 1000,
+  },
+  chatCloseText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

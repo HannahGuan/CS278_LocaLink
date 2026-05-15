@@ -22,10 +22,13 @@ import MapScreen from './app/screens/MapScreen';
 import DiscoverScreen from './app/screens/DiscoverScreen';
 import FriendsScreen from './app/screens/FriendsScreen';
 import ProfileScreen from './app/screens/ProfileScreen';
+import { UnreadProvider, useUnread } from './app/contexts/UnreadContext';
 
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
+  const { totalUnread } = useUnread();
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -65,8 +68,20 @@ function MainTabs() {
         name="Friends"
         component={FriendsScreen}
         options={{
-          tabBarIcon: () => <Text style={{ fontSize: 24 }}>👥</Text>,
+          tabBarIcon: () => (
+            <View>
+              <Text style={{ fontSize: 24 }}>👥</Text>
+              {totalUnread > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>
+                    {totalUnread > 9 ? '9+' : totalUnread}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ),
           tabBarLabel: 'Friends',
+          tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
         }}
       />
       <Tab.Screen
@@ -201,9 +216,11 @@ export default function App() {
 
   // Show main app
   return (
-    <NavigationContainer>
-      <MainTabs />
-    </NavigationContainer>
+    <UnreadProvider>
+      <NavigationContainer>
+        <MainTabs />
+      </NavigationContainer>
+    </UnreadProvider>
   );
 }
 
@@ -218,5 +235,22 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#666666',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    backgroundColor: '#FF3B30',
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

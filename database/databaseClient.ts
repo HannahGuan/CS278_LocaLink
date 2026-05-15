@@ -125,13 +125,42 @@ export class DatabaseClient {
   }
 
   async acceptFriendRequest(requestId: string): Promise<void> {
-    const { error } = await this.client
+    // First, get the original request to know who sent it
+    const { data: request, error: fetchError } = await this.client
+      .from('friends')
+      .select('user_id, friend_id')
+      .eq('id', requestId)
+      .single();
+
+    if (fetchError !== null) {
+      throw new DatabaseError(`Failed to fetch friend request: ${fetchError.message}`, fetchError);
+    }
+
+    if (!request) {
+      throw new DatabaseError('Friend request not found');
+    }
+
+    // Update the original request to accepted
+    const { error: updateError } = await this.client
       .from('friends')
       .update({ status: 'accepted' })
       .eq('id', requestId);
 
-    if (error !== null) {
-      throw new DatabaseError(`Failed to accept friend request: ${error.message}`, error);
+    if (updateError !== null) {
+      throw new DatabaseError(`Failed to accept friend request: ${updateError.message}`, updateError);
+    }
+
+    // Create the reverse friendship so both users see each other as friends
+    const { error: insertError } = await this.client
+      .from('friends')
+      .insert({
+        user_id: request.friend_id,
+        friend_id: request.user_id,
+        status: 'accepted',
+      });
+
+    if (insertError !== null) {
+      throw new DatabaseError(`Failed to create reverse friendship: ${insertError.message}`, insertError);
     }
   }
 
