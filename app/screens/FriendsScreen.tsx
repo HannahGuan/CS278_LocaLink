@@ -10,8 +10,9 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
-import { mockFriends, mockDiscoverUsers } from '../data/mockData';
+import { mockDiscoverUsers } from '../data/mockData';
 import { getCurrentUser } from '../../database/auth';
 import {
   databaseClient,
@@ -22,24 +23,28 @@ import {
   addFriendByEmail,
   AddFriendOutcome,
 } from '../../database/friendRequests';
+import { getFriends } from '../../database/friends';
+import { FriendWithDetails } from '../../types';
 
-type TabType = 'messages' | 'nearby' | 'requests';
+type TabType = 'friends' | 'nearby';
 
 export default function FriendsScreen({ navigation }: any) {
-  const [selectedTab, setSelectedTab] = useState<TabType>('messages');
+  const [selectedTab, setSelectedTab] = useState<TabType>('friends');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [friends, setFriends] = useState<FriendWithDetails[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingFriendRequest[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
+  const [isLoadingFriends, setIsLoadingFriends] = useState(true);
   const [isLoadingPending, setIsLoadingPending] = useState(true);
   const [isLoadingIncoming, setIsLoadingIncoming] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
 
   const tabs = [
-    { id: 'messages' as const, label: 'Messages', icon: '💬' },
+    { id: 'friends' as const, label: 'Friends', icon: '👥' },
     { id: 'nearby' as const, label: 'Nearby', icon: '📍' },
-    { id: 'requests' as const, label: 'Add Friends', icon: '➕' },
   ];
 
   useEffect(() => {
@@ -55,6 +60,7 @@ export default function FriendsScreen({ navigation }: any) {
       }
       setCurrentUserId(user.id);
       await Promise.all([
+        refreshFriends(user.id, cancelled),
         refreshPending(user.id, cancelled),
         refreshIncoming(user.id, cancelled),
       ]);
@@ -64,6 +70,22 @@ export default function FriendsScreen({ navigation }: any) {
       cancelled = true;
     };
   }, []);
+
+  const refreshFriends = async (userId: string, cancelled = false) => {
+    setIsLoadingFriends(true);
+    try {
+      const friendsList = await getFriends(userId);
+      if (!cancelled) {
+        setFriends(friendsList);
+      }
+    } catch (error) {
+      console.error('Error loading friends:', error);
+    } finally {
+      if (!cancelled) {
+        setIsLoadingFriends(false);
+      }
+    }
+  };
 
   const refreshPending = async (userId: string, cancelled = false) => {
     setIsLoadingPending(true);
@@ -111,7 +133,10 @@ export default function FriendsScreen({ navigation }: any) {
       } else {
         await databaseClient.declineFriendRequest(request.id);
       }
-      await refreshIncoming(currentUserId);
+      await Promise.all([
+        refreshIncoming(currentUserId),
+        action === 'accept' ? refreshFriends(currentUserId) : Promise.resolve(),
+      ]);
     } catch (error) {
       console.error(`Error ${action}ing friend request:`, error);
       Alert.alert(
@@ -202,7 +227,15 @@ export default function FriendsScreen({ navigation }: any) {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Friends</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Friends</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => setShowAddFriendModal(true)}
+          >
+            <Text style={styles.addButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.subtitle}>Connect with your Stanford community</Text>
 
         {/* Tabs */}
@@ -232,28 +265,48 @@ export default function FriendsScreen({ navigation }: any) {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false as boolean}>
-        {/* Messages Tab */}
-        {selectedTab === 'messages' && (
+        {/* Friends Tab */}
+        {selectedTab === 'friends' && (
           <View>
-            {mockFriends.map((friend) => (
-              <TouchableOpacity
-                key={friend.id}
-                style={styles.messageCard}
-                onPress={() => navigation.navigate('ChatDetail', { friend })}
-              >
-                <Image source={{ uri: friend.photo }} style={styles.messageAvatar} />
-                <View style={styles.messageContent}>
-                  <View style={styles.messageHeader}>
-                    <Text style={styles.messageName}>{friend.name}</Text>
-                    <Text style={styles.messageTime}>2h ago</Text>
+            {isLoadingFriends ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator color="#8C1515" />
+              </View>
+            ) : friends.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>👥</Text>
+                <Text style={styles.emptyText}>No friends yet</Text>
+                <Text style={styles.emptySubtext}>Tap the + button to add friends</Text>
+              </View>
+            ) : (
+              friends.map((friend) => (
+                <View key={friend.id} style={styles.friendCard}>
+                  {friend.friend.avatar_url ? (
+                    <Image
+                      source={{ uri: friend.friend.avatar_url }}
+                      style={styles.friendAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.friendAvatar, styles.avatarFallback]}>
+                      <Text style={styles.avatarFallbackText}>
+                        {friend.friend.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.friendContent}>
+                    <Text style={styles.friendName}>{friend.friend.name}</Text>
+                    <Text style={styles.friendInfo}>
+                      {friend.friend.year} • {friend.friend.major}
+                    </Text>
+                    {friend.friend.bio && (
+                      <Text style={styles.friendBio} numberOfLines={1}>
+                        {friend.friend.bio}
+                      </Text>
+                    )}
                   </View>
-                  <Text style={styles.messagePreview} numberOfLines={1}>
-                    Hey! Want to grab coffee later?
-                  </Text>
                 </View>
-                {/* Unread count - to be implemented */}
-              </TouchableOpacity>
-            ))}
+              ))
+            )}
           </View>
         )}
 
@@ -296,10 +349,26 @@ export default function FriendsScreen({ navigation }: any) {
             ))}
           </View>
         )}
+      </ScrollView>
 
-        {/* Add Friends Tab */}
-        {selectedTab === 'requests' && (
-          <View>
+      {/* Add Friends Modal */}
+      <Modal
+        visible={showAddFriendModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddFriendModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowAddFriendModal(false)}>
+              <Text style={styles.modalCloseButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Add Friends</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {/* Search Section */}
             <View style={styles.searchSection}>
               <Text style={styles.searchTitle}>Find Stanford Students</Text>
               <Text style={styles.searchSubtitle}>
@@ -438,9 +507,9 @@ export default function FriendsScreen({ navigation }: any) {
                 ))
               )}
             </View>
-          </View>
-        )}
-      </ScrollView>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -457,6 +526,11 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
     fontSize: 34,
@@ -793,5 +867,72 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#666666',
+  },
+  // Friends List
+  friendCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  friendAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 12,
+  },
+  friendContent: {
+    flex: 1,
+  },
+  friendName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 2,
+  },
+  friendInfo: {
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 2,
+  },
+  friendBio: {
+    fontSize: 13,
+    color: '#999999',
+    fontStyle: 'italic',
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: '#BBBBBB',
+    marginTop: 4,
+  },
+  // Modal
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  modalCloseButton: {
+    fontSize: 17,
+    color: '#8C1515',
+    width: 60,
+  },
+  modalContent: {
+    flex: 1,
   },
 });
