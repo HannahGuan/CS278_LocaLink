@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Event } from '../types';
+import { UserEventRow } from '../../database/databaseClient';
 
 const STANFORD_FEED_URL =
   'https://events.stanford.edu/widget/view?schools=stanford&days=7&num=50&format=rss&template=stanford-1-column-compact';
@@ -213,6 +214,37 @@ export class EventClient {
 }
 
 export const eventClient = new EventClient();
+
+const USER_EVENT_ID_PREFIX = 'user:';
+
+export function isUserEventId(eventId: string): boolean {
+  return eventId.startsWith(USER_EVENT_ID_PREFIX);
+}
+
+export function userEventRowToEvent(row: UserEventRow): Event {
+  const coords =
+    row.location_lat !== null && row.location_lng !== null
+      ? { lat: row.location_lat, lng: row.location_lng }
+      : STANFORD_DEFAULT_COORDS;
+  return {
+    id: `${USER_EVENT_ID_PREFIX}${row.id}`,
+    title: row.title,
+    description: row.description ?? '',
+    location: row.location,
+    locationCoords: coords,
+    time: row.event_time,
+    date: row.event_date,
+    organizer: row.created_by,
+    attendees: [],
+    category: row.category,
+    icon: row.icon,
+    imageUrl: row.image_url ?? undefined,
+  };
+}
+
+export function formatTimeLabel(date: Date): string {
+  return formatTimeOfDay(date);
+}
 
 export interface UseEventsResult {
   events: Event[];

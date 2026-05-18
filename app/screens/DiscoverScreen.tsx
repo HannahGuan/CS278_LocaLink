@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,19 @@ import {
   Alert,
 } from 'react-native';
 import { mockFriends } from '../data/mockData';
-import { useEvents, formatDateLabel } from '../api/eventClient';
+import {
+  useEvents,
+  formatDateLabel,
+  userEventRowToEvent,
+  isUserEventId,
+} from '../api/eventClient';
 import { Event } from '../types';
 import { getCurrentUser } from '../../database/auth';
-import { databaseClient } from '../../database/databaseClient';
+import { databaseClient, UserEventRow } from '../../database/databaseClient';
+import CreateEventModal from './CreateEventModal';
+import EventDetailsModal from './EventDetailsModal';
 
-type DiscoverTab = 'now' | 'today' | 'week';
+type DiscoverTab = 'now' | 'today' | 'week' | 'friends';
 
 // event.time is "3:00 PM" — return minutes since midnight, or null if unparseable.
 function parseEventTimeToMinutes(time: string): number | null {
@@ -29,9 +36,31 @@ function parseEventTimeToMinutes(time: string): number | null {
   return hours * 60 + minutes;
 }
 
-function filterEventsForTab(events: Event[], tab: DiscoverTab): Event[] {
+interface FilterContext {
+  friendEventIds: Set<string>;
+  friendOrganizerIds: Set<string>;
+}
+
+function isFriendEvent(event: Event, ctx: FilterContext): boolean {
+  if (ctx.friendEventIds.has(event.id)) return true;
+  // For user-created events the organizer field carries the creator's user id.
+  if (isUserEventId(event.id) && ctx.friendOrganizerIds.has(event.organizer)) {
+    return true;
+  }
+  return false;
+}
+
+function filterEventsForTab(
+  events: Event[],
+  tab: DiscoverTab,
+  ctx: FilterContext
+): Event[] {
   const now = new Date();
   const todayLabel = formatDateLabel(now);
+
+  if (tab === 'friends') {
+    return events.filter((event) => isFriendEvent(event, ctx));
+  }
 
   if (tab === 'today') {
     return events.filter((event) => event.date === todayLabel);
@@ -58,11 +87,37 @@ function filterEventsForTab(events: Event[], tab: DiscoverTab): Event[] {
 
 export default function DiscoverScreen() {
   const [selectedTab, setSelectedTab] = useState<DiscoverTab>('today');
-  const { events, isLoading, errorMessage } = useEvents();
-  const visibleEvents = filterEventsForTab(events, selectedTab);
+  const { events: feedEvents, isLoading, errorMessage } = useEvents();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [rsvpedEventIds, setRsvpedEventIds] = useState<Set<string>>(new Set());
   const [pendingRsvpEventId, setPendingRsvpEventId] = useState<string | null>(null);
+  const [userEventRows, setUserEventRows] = useState<UserEventRow[]>([]);
+  const [friendRsvpEventIds, setFriendRsvpEventIds] = useState<Set<string>>(new Set());
+  const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
+  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+
+  const refreshUserEvents = async () => {
+    try {
+      const rows = await databaseClient.getUserEvents();
+      setUserEventRows(rows);
+    } catch (error) {
+      console.error('Error loading user events:', error);
+    }
+  };
+
+  const refreshFriendsContext = async (userId: string) => {
+    try {
+      const [rsvpIds, friends] = await Promise.all([
+        databaseClient.getFriendsRsvpedEventIds(userId),
+        databaseClient.getAcceptedFriendIds(userId),
+      ]);
+      setFriendRsvpEventIds(rsvpIds);
+      setFriendIds(friends);
+    } catch (error) {
+      console.error('Error loading friends context:', error);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -80,12 +135,25 @@ export default function DiscoverScreen() {
       } catch (error) {
         console.error('Error loading RSVPs:', error);
       }
+      await Promise.all([refreshUserEvents(), refreshFriendsContext(user.id)]);
     };
     load();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const allEvents = useMemo(() => {
+    const userEvents = userEventRows.map(userEventRowToEvent);
+    return [...userEvents, ...feedEvents];
+  }, [userEventRows, feedEvents]);
+
+  const filterContext: FilterContext = useMemo(
+    () => ({ friendEventIds: friendRsvpEventIds, friendOrganizerIds: friendIds }),
+    [friendRsvpEventIds, friendIds]
+  );
+
+  const visibleEvents = filterEventsForTab(allEvents, selectedTab, filterContext);
 
   const handleToggleRsvp = async (event: Event) => {
     if (pendingRsvpEventId !== null) {
@@ -149,7 +217,36 @@ export default function DiscoverScreen() {
     { id: 'now' as const, label: 'Now' },
     { id: 'today' as const, label: 'Today' },
     { id: 'week' as const, label: 'This Week' },
+    { id: 'friends' as const, label: '👥 Friends' },
   ];
+
+  const sectionTitle = (() => {
+    switch (selectedTab) {
+      case 'now':
+        return 'Happening Now';
+      case 'today':
+        return "Today's Events";
+      case 'week':
+        return 'This Week';
+      case 'friends':
+        return 'From Your Friends';
+    }
+  })();
+
+  const emptyMessage = (() => {
+    switch (selectedTab) {
+      case 'now':
+        return 'Nothing happening right now.';
+      case 'today':
+        return 'No events today.';
+      case 'week':
+        return 'No events this week.';
+      case 'friends':
+        return friendIds.size === 0
+          ? 'Add friends to see what they’re up to.'
+          : 'No events from your friends yet.';
+    }
+  })();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -159,6 +256,13 @@ export default function DiscoverScreen() {
             <Text style={styles.title}>Discover</Text>
             <Text style={styles.subtitle}>Campus events and activities</Text>
           </View>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => setShowCreateModal(true)}
+            accessibilityLabel="Create event"
+          >
+            <Text style={styles.addButtonText}>+</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -186,13 +290,7 @@ export default function DiscoverScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false as boolean}>
-        <Text style={styles.sectionTitle}>
-          {selectedTab === 'now'
-            ? 'Happening Now'
-            : selectedTab === 'today'
-            ? "Today's Events"
-            : 'This Week'}
-        </Text>
+        <Text style={styles.sectionTitle}>{sectionTitle}</Text>
 
         {isLoading && (
           <View style={styles.statusContainer}>
@@ -209,13 +307,7 @@ export default function DiscoverScreen() {
 
         {!isLoading && errorMessage === null && visibleEvents.length === 0 && (
           <View style={styles.statusContainer}>
-            <Text style={styles.statusText}>
-              {selectedTab === 'now'
-                ? 'Nothing happening right now.'
-                : selectedTab === 'today'
-                ? 'No events today.'
-                : 'No events this week.'}
-            </Text>
+            <Text style={styles.statusText}>{emptyMessage}</Text>
           </View>
         )}
 
@@ -223,8 +315,14 @@ export default function DiscoverScreen() {
           const isGoing = rsvpedEventIds.has(event.id);
           const isPending = pendingRsvpEventId === event.id;
           const attendeeCount = event.attendees.length + (isGoing ? 1 : 0);
+          const isUserCreated = isUserEventId(event.id);
           return (
             <View key={event.id} style={styles.eventCard}>
+              {isUserCreated && (
+                <View style={styles.userEventTag}>
+                  <Text style={styles.userEventTagText}>From a Stanford student</Text>
+                </View>
+              )}
               <View style={styles.eventHeader}>
                 {event.imageUrl !== undefined ? (
                   <Image source={{ uri: event.imageUrl }} style={styles.eventImage} />
@@ -235,9 +333,11 @@ export default function DiscoverScreen() {
                 )}
                 <View style={styles.eventInfo}>
                   <Text style={styles.eventTitle}>{event.title}</Text>
-                  <Text style={styles.eventDescription} numberOfLines={2}>
-                    {event.description}
-                  </Text>
+                  {event.description.length > 0 && (
+                    <Text style={styles.eventDescription} numberOfLines={2}>
+                      {event.description}
+                    </Text>
+                  )}
                   <Text style={styles.eventDetail}>📍 {event.location}</Text>
                   <Text style={styles.eventDetail}>
                     🕐 {event.time} • {event.date}
@@ -264,6 +364,12 @@ export default function DiscoverScreen() {
                   </Text>
                 </View>
                 <View style={styles.eventActions}>
+                  <TouchableOpacity
+                    style={styles.detailsButton}
+                    onPress={() => setSelectedEvent(event)}
+                  >
+                    <Text style={styles.detailsButtonText}>Details</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={[
                       styles.rsvpButton,
@@ -295,6 +401,20 @@ export default function DiscoverScreen() {
           );
         })}
       </ScrollView>
+
+      <CreateEventModal
+        visible={showCreateModal}
+        currentUserId={currentUserId}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={() => {
+          refreshUserEvents();
+        }}
+      />
+
+      <EventDetailsModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -384,6 +504,20 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  userEventTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F4E8E9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  userEventTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8C1515',
+    letterSpacing: 0.2,
+  },
   eventHeader: {
     flexDirection: 'row',
     gap: 12,
@@ -456,6 +590,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  detailsButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F2F2F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailsButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
   rsvpButton: {
     backgroundColor: '#8C1515',
     paddingVertical: 8,
@@ -480,18 +627,6 @@ const styles = StyleSheet.create({
   },
   rsvpButtonTextGoing: {
     color: '#8C1515',
-  },
-  shareButton: {
-    backgroundColor: '#F2F2F7',
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  shareButtonText: {
-    fontSize: 16,
-    color: '#666666',
   },
   statusContainer: {
     paddingVertical: 24,

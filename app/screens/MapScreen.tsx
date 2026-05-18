@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,19 +9,17 @@ import {
   Image,
   SafeAreaView,
   Platform,
-  Modal,
-  Pressable,
-  Dimensions,
   ActivityIndicator,
 } from 'react-native';
 import WebView from 'react-native-webview';
 import * as Location from 'expo-location';
 
-const { height: WINDOW_HEIGHT } = Dimensions.get('window');
-import { useEvents } from '../api/eventClient';
+import { useEvents, userEventRowToEvent, isUserEventId } from '../api/eventClient';
 import { Event } from '../types';
 import { getFriendLocations, updateMyLocation, FriendLocation } from '../../database/locations';
 import { getCurrentUser } from '../../database/auth';
+import { databaseClient, UserEventRow } from '../../database/databaseClient';
+import EventDetailsModal from './EventDetailsModal';
 
 // Helper function to calculate distance between two coordinates (in miles)
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -93,17 +92,19 @@ const generateMapHTML = (
     });
   }
 
-  // Add event markers
+  // Add event markers. User-created events get a distinct color so they
+  // stand out from the Stanford RSS feed events.
   if (filter === 'all' || filter === 'events') {
-    eventsData.slice(0, 10).forEach((event) => {
+    eventsData.slice(0, 20).forEach((event) => {
       const eventTitle = event.title.replace(/'/g, "\\'");
       const eventLocation = event.location.replace(/'/g, "\\'");
+      const color = isUserEventId(event.id) ? '#F59E0B' : '#7C3AED';
 
       markers.push(`
         L.marker([${event.locationCoords.lat}, ${event.locationCoords.lng}], {
           icon: L.divIcon({
             className: 'custom-marker',
-            html: '<div style="background-color: #7C3AED; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>',
+            html: '<div style="background-color: ` + color + `; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>',
             iconSize: [20, 20]
           })
         }).addTo(map).bindPopup('<b>` + eventTitle + `</b><br>` + eventLocation + `');
@@ -146,8 +147,16 @@ const generateMapHTML = (
 export default function MapScreen() {
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'friends' | 'events'>('all');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const { events } = useEvents();
+  const { events: feedEvents } = useEvents();
+  const [userEventRows, setUserEventRows] = useState<UserEventRow[]>([]);
   const webViewRef = useRef<WebView>(null);
+
+  // User-created events show their own markers + appear in the Nearby Events
+  // list. They sit ahead of the feed events so they're easy to find.
+  const events: Event[] = [
+    ...userEventRows.map(userEventRowToEvent),
+    ...feedEvents,
+  ];
 
   // User location state
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -186,6 +195,29 @@ export default function MapScreen() {
 
     loadData();
   }, []);
+
+  // Load user-created events so they show up as map markers alongside the
+  // Stanford RSS feed. Re-run on every focus so events created in Discover
+  // appear when the user switches back to this tab.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const loadUserEvents = async () => {
+        try {
+          const rows = await databaseClient.getUserEvents();
+          if (!cancelled) {
+            setUserEventRows(rows);
+          }
+        } catch (error) {
+          console.error('Error loading user events for map:', error);
+        }
+      };
+      loadUserEvents();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   // Get user location on mount and update to database
   useEffect(() => {
@@ -303,6 +335,10 @@ export default function MapScreen() {
             <View style={[styles.legendDot, { backgroundColor: '#7C3AED' }]} />
             <Text style={styles.legendText}>Events</Text>
           </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
+            <Text style={styles.legendText}>By students</Text>
+          </View>
         </View>
       </View>
 
@@ -386,94 +422,10 @@ export default function MapScreen() {
         )}
       </ScrollView>
 
-      <Modal
-        visible={selectedEvent !== null}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setSelectedEvent(null)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setSelectedEvent(null)}
-        >
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            {selectedEvent !== null && (
-              <ScrollView
-                style={styles.modalScroll}
-                contentContainerStyle={styles.modalScrollContent}
-                showsVerticalScrollIndicator={true as boolean}
-                bounces={true}
-              >
-                <View style={styles.modalHero}>
-                  {selectedEvent.imageUrl !== undefined ? (
-                    <Image
-                      source={{ uri: selectedEvent.imageUrl }}
-                      style={styles.modalHeroImage}
-                    />
-                  ) : (
-                    <View style={styles.modalHeroFallback}>
-                      <Text style={styles.modalHeroIcon}>{selectedEvent.icon}</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    style={styles.modalCloseButton}
-                    onPress={() => setSelectedEvent(null)}
-                  >
-                    <Text style={styles.modalCloseText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.modalBody}>
-                  <View style={styles.modalCategoryBadge}>
-                    <Text style={styles.modalCategoryText}>
-                      {selectedEvent.icon} {selectedEvent.category}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.modalTitle}>{selectedEvent.title}</Text>
-                  <Text style={styles.modalOrganizer}>by {selectedEvent.organizer}</Text>
-
-                  <View style={styles.modalDivider} />
-
-                  <View style={styles.modalInfoRow}>
-                    <Text style={styles.modalInfoIcon}>📅</Text>
-                    <View style={styles.modalInfoContent}>
-                      <Text style={styles.modalInfoLabel}>Date</Text>
-                      <Text style={styles.modalInfoValue}>{selectedEvent.date}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.modalInfoRow}>
-                    <Text style={styles.modalInfoIcon}>🕒</Text>
-                    <View style={styles.modalInfoContent}>
-                      <Text style={styles.modalInfoLabel}>Time</Text>
-                      <Text style={styles.modalInfoValue}>{selectedEvent.time}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.modalInfoRow}>
-                    <Text style={styles.modalInfoIcon}>📍</Text>
-                    <View style={styles.modalInfoContent}>
-                      <Text style={styles.modalInfoLabel}>Location</Text>
-                      <Text style={styles.modalInfoValue}>{selectedEvent.location}</Text>
-                    </View>
-                  </View>
-
-                  {selectedEvent.description.length > 0 && (
-                    <>
-                      <View style={styles.modalDivider} />
-                      <Text style={styles.modalSectionLabel}>About</Text>
-                      <Text style={styles.modalDescription}>
-                        {selectedEvent.description}
-                      </Text>
-                    </>
-                  )}
-                </View>
-              </ScrollView>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <EventDetailsModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -736,134 +688,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#8C1515',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    width: '100%',
-    height: WINDOW_HEIGHT * 0.85,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  modalScroll: {
-    flex: 1,
-  },
-  modalScrollContent: {
-    paddingBottom: 24,
-  },
-  modalHero: {
-    height: 180,
-    position: 'relative',
-    backgroundColor: '#F4E8E9',
-  },
-  modalHeroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  modalHeroFallback: {
-    flex: 1,
-    backgroundColor: '#8C1515',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalHeroIcon: {
-    fontSize: 72,
-  },
-  modalCloseButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCloseText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalBody: {
-    padding: 20,
-  },
-  modalCategoryBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#F4E8E9',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  modalCategoryText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#8C1515',
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#000000',
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  modalOrganizer: {
-    fontSize: 14,
-    color: '#666666',
-  },
-  modalDivider: {
-    height: 1,
-    backgroundColor: '#E5E5EA',
-    marginVertical: 16,
-  },
-  modalInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  modalInfoIcon: {
-    fontSize: 20,
-    width: 32,
-  },
-  modalInfoContent: {
-    flex: 1,
-  },
-  modalInfoLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#8C1515',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  modalInfoValue: {
-    fontSize: 15,
-    color: '#000000',
-    marginTop: 2,
-  },
-  modalSectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666666',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  modalDescription: {
-    fontSize: 15,
-    color: '#000000',
-    lineHeight: 22,
   },
   emptyState: {
     padding: 24,

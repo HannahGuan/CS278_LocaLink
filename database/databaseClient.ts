@@ -26,6 +26,36 @@ export interface IncomingFriendRequest {
   sender: Profile;
 }
 
+export interface UserEventRow {
+  id: string;
+  created_by: string;
+  title: string;
+  description: string | null;
+  location: string;
+  location_lat: number | null;
+  location_lng: number | null;
+  event_date: string;
+  event_time: string;
+  starts_at: string;
+  category: string;
+  icon: string;
+  image_url: string | null;
+  created_at: string;
+}
+
+export interface CreateUserEventInput {
+  title: string;
+  description: string;
+  location: string;
+  locationLat: number | null;
+  locationLng: number | null;
+  eventDate: string;
+  eventTime: string;
+  startsAt: Date;
+  category: string;
+  icon: string;
+}
+
 /**
  * Thin, typed wrapper around Supabase for user and friendship reads/writes.
  *
@@ -209,6 +239,25 @@ export class DatabaseClient {
     }
   }
 
+  /**
+   * Return profiles of users who RSVPed to an event. Bounded by the
+   * event_rsvps RLS policies: callers see themselves and any accepted
+   * friend, not strangers.
+   */
+  async getEventAttendees(eventId: string): Promise<Profile[]> {
+    const { data, error } = await this.client
+      .from('event_rsvps')
+      .select('user:profiles!event_rsvps_user_id_fkey(*)')
+      .eq('event_id', eventId);
+
+    if (error !== null) {
+      throw new DatabaseError(`Failed to fetch attendees: ${error.message}`, error);
+    }
+    return ((data ?? []) as unknown as { user: Profile }[])
+      .map((row) => row.user)
+      .filter((user): user is Profile => user !== null && user !== undefined);
+  }
+
   async deleteEventRsvp(userId: string, eventId: string): Promise<void> {
     const { error } = await this.client
       .from('event_rsvps')
@@ -219,6 +268,95 @@ export class DatabaseClient {
     if (error !== null) {
       throw new DatabaseError(`Failed to remove RSVP: ${error.message}`, error);
     }
+  }
+
+  async createUserEvent(userId: string, input: CreateUserEventInput): Promise<UserEventRow> {
+    const { data, error } = await this.client
+      .from('user_events')
+      .insert({
+        created_by: userId,
+        title: input.title,
+        description: input.description,
+        location: input.location,
+        location_lat: input.locationLat,
+        location_lng: input.locationLng,
+        event_date: input.eventDate,
+        event_time: input.eventTime,
+        starts_at: input.startsAt.toISOString(),
+        category: input.category,
+        icon: input.icon,
+      })
+      .select()
+      .single();
+
+    if (error !== null) {
+      throw new DatabaseError(`Failed to create event: ${error.message}`, error);
+    }
+    return data as UserEventRow;
+  }
+
+  async getUserEvents(): Promise<UserEventRow[]> {
+    const { data, error } = await this.client
+      .from('user_events')
+      .select('*')
+      .order('starts_at', { ascending: true });
+
+    if (error !== null) {
+      throw new DatabaseError(`Failed to fetch user events: ${error.message}`, error);
+    }
+    return (data ?? []) as UserEventRow[];
+  }
+
+  async getAcceptedFriendIds(userId: string): Promise<Set<string>> {
+    const { data, error } = await this.client
+      .from('friends')
+      .select('friend_id')
+      .eq('user_id', userId)
+      .eq('status', 'accepted');
+
+    if (error !== null) {
+      throw new DatabaseError(`Failed to fetch friend ids: ${error.message}`, error);
+    }
+    return new Set((data ?? []).map((row) => row.friend_id as string));
+  }
+
+  /**
+   * Return the set of event_ids that any accepted friend of `userId` has
+   * RSVPed to. Used by the Discover "Friends" filter to surface events
+   * friends are attending.
+   */
+  async getFriendsRsvpedEventIds(userId: string): Promise<Set<string>> {
+    const { data: friendRows, error: friendsError } = await this.client
+      .from('friends')
+      .select('friend_id')
+      .eq('user_id', userId)
+      .eq('status', 'accepted');
+
+    if (friendsError !== null) {
+      throw new DatabaseError(
+        `Failed to fetch friends for RSVP filter: ${friendsError.message}`,
+        friendsError
+      );
+    }
+
+    const friendIds = (friendRows ?? []).map((row) => row.friend_id as string);
+    if (friendIds.length === 0) {
+      return new Set();
+    }
+
+    const { data: rsvpRows, error: rsvpError } = await this.client
+      .from('event_rsvps')
+      .select('event_id')
+      .in('user_id', friendIds);
+
+    if (rsvpError !== null) {
+      throw new DatabaseError(
+        `Failed to fetch friend RSVPs: ${rsvpError.message}`,
+        rsvpError
+      );
+    }
+
+    return new Set((rsvpRows ?? []).map((row) => row.event_id as string));
   }
 }
 
