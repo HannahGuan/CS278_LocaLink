@@ -34,7 +34,6 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     showToFriends: true,
     showToMatches: true,
     eventBased: true,
-    invisible: false,
   });
   const [notifications, setNotifications] = useState({
     friendsNearby: true,
@@ -348,21 +347,6 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
                 </Text>
               </View>
 
-              <View style={styles.settingCard}>
-                <View style={styles.settingHeader}>
-                  <Text style={styles.settingTitle}>Invisible mode</Text>
-                  <Switch
-                    value={Boolean(privacySettings.invisible)}
-                    onValueChange={(value) =>
-                      setPrivacySettings({ ...privacySettings, invisible: value })
-                    }
-                    trackColor={{ false: '#E0E0E0', true: '#8C1515' }}
-                  />
-                </View>
-                <Text style={styles.settingDescription}>
-                  Browse without being visible to others
-                </Text>
-              </View>
             </View>
           </View>
         )}

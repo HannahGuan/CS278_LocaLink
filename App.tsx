@@ -21,6 +21,7 @@ import OnboardingScreen from './app/screens/OnboardingScreen';
 import MapScreen from './app/screens/MapScreen';
 import DiscoverScreen from './app/screens/DiscoverScreen';
 import FriendsScreen from './app/screens/FriendsScreen';
+import MessagesScreen from './app/screens/MessagesScreen';
 import ProfileScreen from './app/screens/ProfileScreen';
 import { UnreadProvider, useUnread } from './app/contexts/UnreadContext';
 
@@ -68,9 +69,17 @@ function MainTabs() {
         name="Friends"
         component={FriendsScreen}
         options={{
+          tabBarIcon: () => <Text style={{ fontSize: 24 }}>👥</Text>,
+          tabBarLabel: 'Friends',
+        }}
+      />
+      <Tab.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{
           tabBarIcon: () => (
             <View>
-              <Text style={{ fontSize: 24 }}>👥</Text>
+              <Text style={{ fontSize: 24 }}>💬</Text>
               {totalUnread > 0 && (
                 <View style={styles.tabBadge}>
                   <Text style={styles.tabBadgeText}>
@@ -80,7 +89,7 @@ function MainTabs() {
               )}
             </View>
           ),
-          tabBarLabel: 'Friends',
+          tabBarLabel: 'Messages',
           tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
         }}
       />

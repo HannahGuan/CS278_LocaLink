@@ -43,6 +43,39 @@ export interface UserEventRow {
   created_at: string;
 }
 
+interface ProfileWithPrivacy extends Profile {
+  privacy_settings?: { showToMatches?: boolean } | null;
+}
+
+interface LocationRow {
+  user_id: string;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+}
+
+// Discovery Mode defaults to ON: only an explicit `false` opts out.
+function isDiscoverable(profile: ProfileWithPrivacy): boolean {
+  return profile.privacy_settings?.showToMatches !== false;
+}
+
+// Haversine — straight-line miles between two lat/lng pairs.
+function distanceInMiles(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const EARTH_RADIUS_MI = 3958.8;
+  const toRad = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_MI * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export interface CreateUserEventInput {
   title: string;
   description: string;
@@ -305,6 +338,90 @@ export class DatabaseClient {
       throw new DatabaseError(`Failed to fetch user events: ${error.message}`, error);
     }
     return (data ?? []) as UserEventRow[];
+  }
+
+  /**
+   * Return profiles a user can discover and message: everyone except
+   * themselves and their already-accepted friends, plus the distance to
+   * each one when both parties have a recent location and the other user
+   * has not opted out of Discovery Mode. Sorted nearest first, with
+   * unknown-distance entries at the bottom.
+   */
+  async getNearbyDiscoverableProfiles(
+    currentUserId: string
+  ): Promise<{ profile: Profile; distanceMiles: number | null }[]> {
+    const acceptedFriendIds = await this.getAcceptedFriendIds(currentUserId);
+    const exclude = new Set<string>([currentUserId, ...acceptedFriendIds]);
+
+    const { data: profileRows, error: profilesError } = await this.client
+      .from('profiles')
+      .select('*');
+
+    if (profilesError !== null) {
+      throw new DatabaseError(
+        `Failed to fetch profiles: ${profilesError.message}`,
+        profilesError
+      );
+    }
+
+    const candidates = ((profileRows ?? []) as ProfileWithPrivacy[]).filter(
+      (profile) => !exclude.has(profile.id) && isDiscoverable(profile)
+    );
+
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    // Pull every location row for self + candidates in one round trip, then
+    // keep the most recent per user. RLS hides rows we're not allowed to see.
+    const locationOwnerIds = [currentUserId, ...candidates.map((p) => p.id)];
+    const { data: locationRows, error: locationsError } = await this.client
+      .from('user_locations')
+      .select('user_id, latitude, longitude, timestamp')
+      .in('user_id', locationOwnerIds)
+      .order('timestamp', { ascending: false });
+
+    if (locationsError !== null) {
+      throw new DatabaseError(
+        `Failed to fetch locations: ${locationsError.message}`,
+        locationsError
+      );
+    }
+
+    const latestLocation = new Map<string, { lat: number; lng: number }>();
+    for (const row of (locationRows ?? []) as LocationRow[]) {
+      if (!latestLocation.has(row.user_id)) {
+        latestLocation.set(row.user_id, {
+          lat: row.latitude,
+          lng: row.longitude,
+        });
+      }
+    }
+
+    const myLocation = latestLocation.get(currentUserId) ?? null;
+
+    const results = candidates.map((profile) => {
+      const otherLocation = latestLocation.get(profile.id) ?? null;
+      const distanceMiles =
+        myLocation !== null && otherLocation !== null
+          ? distanceInMiles(
+              myLocation.lat,
+              myLocation.lng,
+              otherLocation.lat,
+              otherLocation.lng
+            )
+          : null;
+      return { profile: profile as Profile, distanceMiles };
+    });
+
+    results.sort((a, b) => {
+      if (a.distanceMiles === null && b.distanceMiles === null) return 0;
+      if (a.distanceMiles === null) return 1;
+      if (b.distanceMiles === null) return -1;
+      return a.distanceMiles - b.distanceMiles;
+    });
+
+    return results;
   }
 
   async getAcceptedFriendIds(userId: string): Promise<Set<string>> {

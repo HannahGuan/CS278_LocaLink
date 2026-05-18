@@ -12,7 +12,6 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import { mockDiscoverUsers } from '../data/mockData';
 import { getCurrentUser } from '../../database/auth';
 import {
   databaseClient,
@@ -35,7 +34,13 @@ import { useUnread } from '../contexts/UnreadContext';
 
 type TabType = 'friends' | 'nearby';
 
-export default function FriendsScreen({ navigation }: any) {
+function formatDistance(miles: number): string {
+  if (miles < 0.1) return '< 0.1 mi';
+  if (miles < 10) return `${miles.toFixed(1)} mi`;
+  return `${Math.round(miles)} mi`;
+}
+
+export default function FriendsScreen() {
   const [selectedTab, setSelectedTab] = useState<TabType>('friends');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -50,6 +55,10 @@ export default function FriendsScreen({ navigation }: any) {
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [chatFriend, setChatFriend] = useState<Profile | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Map<string, number>>(new Map());
+  const [nearbyProfiles, setNearbyProfiles] = useState<
+    { profile: Profile; distanceMiles: number | null }[]
+  >([]);
+  const [isLoadingNearby, setIsLoadingNearby] = useState<boolean>(true);
   const { refreshUnread } = useUnread();
 
   const tabs = [
@@ -76,6 +85,7 @@ export default function FriendsScreen({ navigation }: any) {
         refreshPending(user.id, cancelled),
         refreshIncoming(user.id, cancelled),
         refreshUnreadCounts(user.id),
+        refreshNearby(user.id, cancelled),
       ]);
 
       // Subscribe to new messages for real-time unread updates
@@ -130,6 +140,22 @@ export default function FriendsScreen({ navigation }: any) {
     } finally {
       if (!cancelled) {
         setIsLoadingPending(false);
+      }
+    }
+  };
+
+  const refreshNearby = async (userId: string, cancelled = false) => {
+    setIsLoadingNearby(true);
+    try {
+      const results = await databaseClient.getNearbyDiscoverableProfiles(userId);
+      if (!cancelled) {
+        setNearbyProfiles(results);
+      }
+    } catch (error) {
+      console.error('Error loading nearby profiles:', error);
+    } finally {
+      if (!cancelled) {
+        setIsLoadingNearby(false);
       }
     }
   };
@@ -372,39 +398,75 @@ export default function FriendsScreen({ navigation }: any) {
         {selectedTab === 'nearby' && (
           <View>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>People Nearby</Text>
-              <Text style={styles.distanceText}>📍 Within 0.5 mi</Text>
+              <Text style={styles.sectionTitle}>Nearby</Text>
             </View>
 
-            {mockDiscoverUsers.map((user) => (
-              <View key={user.id} style={styles.nearbyCard}>
-                <Image source={{ uri: user.photo }} style={styles.nearbyAvatar} />
-                <View style={styles.nearbyContent}>
-                  <View style={styles.nearbyHeader}>
-                    <Text style={styles.nearbyName}>{user.name}</Text>
-                    <View style={styles.distanceBadge}>
-                      <Text style={styles.distanceBadgeText}>{user.distance} mi</Text>
+            {isLoadingNearby ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator size="small" color="#8C1515" />
+              </View>
+            ) : nearbyProfiles.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>
+                  No other students to discover yet.
+                </Text>
+              </View>
+            ) : (
+              nearbyProfiles.map(({ profile, distanceMiles }) => {
+                const interests =
+                  (profile as Profile & { interests?: string[] | null }).interests ?? [];
+                return (
+                  <View key={profile.id} style={styles.nearbyCard}>
+                    {profile.avatar_url !== undefined && profile.avatar_url !== null ? (
+                      <Image
+                        source={{ uri: profile.avatar_url }}
+                        style={styles.nearbyAvatar}
+                      />
+                    ) : (
+                      <View style={[styles.nearbyAvatar, styles.nearbyAvatarFallback]}>
+                        <Text style={styles.nearbyAvatarFallbackText}>
+                          {profile.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.nearbyContent}>
+                      <View style={styles.nearbyHeader}>
+                        <Text style={styles.nearbyName}>{profile.name}</Text>
+                        {distanceMiles !== null && (
+                          <View style={styles.distanceBadge}>
+                            <Text style={styles.distanceBadgeText}>
+                              {formatDistance(distanceMiles)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {profile.bio !== undefined &&
+                        profile.bio !== null &&
+                        profile.bio.length > 0 && (
+                          <Text style={styles.nearbyInfo} numberOfLines={2}>
+                            {profile.bio}
+                          </Text>
+                        )}
+                      {interests.length > 0 && (
+                        <View style={styles.interestsContainer}>
+                          {interests.slice(0, 3).map((interest: string) => (
+                            <View key={interest} style={styles.interestTag}>
+                              <Text style={styles.interestText}>{interest}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        style={styles.waveButton}
+                        onPress={() => setChatFriend(profile)}
+                      >
+                        <Text style={styles.waveButtonText}>💬 Send Message</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
-                  <Text style={styles.nearbyInfo}>
-                    {user.year} • {user.major}
-                  </Text>
-                  <View style={styles.interestsContainer}>
-                    {user.interests.slice(0, 3).map((interest) => (
-                      <View key={interest} style={styles.interestTag}>
-                        <Text style={styles.interestText}>{interest}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <TouchableOpacity
-                    style={styles.waveButton}
-                    onPress={() => navigation.navigate('ChatDetail', { friend: user })}
-                  >
-                    <Text style={styles.waveButtonText}>💬 Send Message</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+                );
+              })
+            )}
           </View>
         )}
       </ScrollView>
@@ -757,6 +819,21 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 12,
     marginRight: 12,
+  },
+  nearbyAvatarFallback: {
+    backgroundColor: '#F4E8E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nearbyAvatarFallbackText: {
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
   },
   nearbyContent: {
     flex: 1,

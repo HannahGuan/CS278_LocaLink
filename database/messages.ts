@@ -19,66 +19,69 @@ export interface Conversation {
 }
 
 /**
- * Get all conversations for a user
- * Returns a list of friends with their last message and unread count
+ * Get all conversations for a user.
+ * Walks every message the user sent or received, groups by the other party,
+ * then resolves those profile rows. Returning chats only with accepted
+ * friends would hide DMs with people the user met via the Nearby tab.
  */
 export const getConversations = async (userId: string): Promise<Conversation[]> => {
-  // First get all friends
-  const { data: friends, error: friendsError } = await supabase
-    .from('friends')
-    .select('friend:profiles!friends_friend_id_fkey(*)')
-    .eq('user_id', userId)
-    .eq('status', 'accepted');
+  const { data: messages, error: messagesError } = await supabase
+    .from('messages')
+    .select('*')
+    .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+    .order('created_at', { ascending: false });
 
-  if (friendsError || !friends) {
-    console.error('Error fetching friends:', friendsError);
+  if (messagesError !== null || messages === null) {
+    console.error('Error fetching messages:', messagesError);
     return [];
   }
 
-  const conversations: Conversation[] = [];
-
-  for (const friendRow of friends) {
-    const friend = friendRow.friend as Profile;
-
-    // Get last message with this friend
-    const { data: messages, error: messagesError } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`and(sender_id.eq.${userId},recipient_id.eq.${friend.id}),and(sender_id.eq.${friend.id},recipient_id.eq.${userId})`)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (messagesError) {
-      console.error('Error fetching messages:', messagesError);
-      continue;
+  // For each other party, capture their newest message + accumulate unread count.
+  const byOtherId = new Map<string, { lastMessage: Message; unreadCount: number }>();
+  for (const message of messages as Message[]) {
+    const otherId =
+      message.sender_id === userId ? message.recipient_id : message.sender_id;
+    let entry = byOtherId.get(otherId);
+    if (entry === undefined) {
+      entry = { lastMessage: message, unreadCount: 0 };
+      byOtherId.set(otherId, entry);
     }
-
-    const lastMessage = messages && messages.length > 0 ? messages[0] : null;
-
-    // Get unread count (messages from friend to user that are unread)
-    const { count, error: countError } = await supabase
-      .from('messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('sender_id', friend.id)
-      .eq('recipient_id', userId)
-      .eq('read', false);
-
-    if (countError) {
-      console.error('Error counting unread messages:', countError);
+    if (message.recipient_id === userId && message.read === false) {
+      entry.unreadCount += 1;
     }
-
-    conversations.push({
-      friend,
-      lastMessage,
-      unreadCount: count || 0,
-    });
   }
 
-  // Sort by last message time (most recent first)
+  if (byOtherId.size === 0) {
+    return [];
+  }
+
+  const otherIds = Array.from(byOtherId.keys());
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', otherIds);
+
+  if (profilesError !== null || profiles === null) {
+    console.error('Error fetching conversation profiles:', profilesError);
+    return [];
+  }
+
+  const conversations: Conversation[] = (profiles as Profile[]).map((profile) => {
+    const entry = byOtherId.get(profile.id);
+    return {
+      friend: profile,
+      lastMessage: entry?.lastMessage ?? null,
+      unreadCount: entry?.unreadCount ?? 0,
+    };
+  });
+
   conversations.sort((a, b) => {
-    if (!a.lastMessage) return 1;
-    if (!b.lastMessage) return -1;
-    return new Date(b.lastMessage.created_at).getTime() - new Date(a.lastMessage.created_at).getTime();
+    if (a.lastMessage === null) return 1;
+    if (b.lastMessage === null) return -1;
+    return (
+      new Date(b.lastMessage.created_at).getTime() -
+      new Date(a.lastMessage.created_at).getTime()
+    );
   });
 
   return conversations;

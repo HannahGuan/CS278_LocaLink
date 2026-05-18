@@ -31,7 +31,6 @@ interface UserProfile {
     showToFriends?: boolean;
     showToMatches?: boolean;
     eventBased?: boolean;
-    invisible?: boolean;
   };
 }
 
@@ -40,7 +39,6 @@ export default function ProfileScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [visibleToFriends, setVisibleToFriends] = useState(true);
   const [discoveryMode, setDiscoveryMode] = useState(true);
-  const [ghostMode, setGhostMode] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [editedBio, setEditedBio] = useState('');
   const [isEditingInterests, setIsEditingInterests] = useState(false);
@@ -80,7 +78,6 @@ export default function ProfileScreen({ navigation }: any) {
       if (data.privacy_settings) {
         setVisibleToFriends(data.privacy_settings.showToFriends ?? true);
         setDiscoveryMode(data.privacy_settings.showToMatches ?? true);
-        setGhostMode(data.privacy_settings.invisible ?? false);
       }
     } catch (error) {
       console.error('Error in loadProfile:', error);
@@ -339,20 +336,6 @@ export default function ProfileScreen({ navigation }: any) {
                 onValueChange={(value) => {
                   setDiscoveryMode(value);
                   updatePrivacySettings('showToMatches', value);
-                }}
-                trackColor={{ false: '#E0E0E0', true: '#8C1515' }}
-              />
-            </View>
-            <View style={[styles.settingRow, styles.settingRowBorder]}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Ghost mode</Text>
-                <Text style={styles.settingDescription}>Browse invisibly</Text>
-              </View>
-              <Switch
-                value={Boolean(ghostMode)}
-                onValueChange={(value) => {
-                  setGhostMode(value);
-                  updatePrivacySettings('invisible', value);
                 }}
                 trackColor={{ false: '#E0E0E0', true: '#8C1515' }}
               />

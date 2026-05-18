@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,23 +9,25 @@ import {
   Image,
   SafeAreaView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { getCurrentUser } from '../../database/auth';
 import { getConversations, Conversation } from '../../database/messages';
+import { Profile } from '../../types';
+import ChatDetailScreen from './ChatDetailScreen';
+import { useUnread } from '../contexts/UnreadContext';
 
-export default function MessagesScreen({ navigation }: any) {
+export default function MessagesScreen() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [chatFriend, setChatFriend] = useState<Profile | null>(null);
+  const { refreshUnread } = useUnread();
 
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const user = await getCurrentUser();
-      if (!user) {
+      if (user === null) {
         setIsLoading(false);
         return;
       }
@@ -37,7 +40,19 @@ export default function MessagesScreen({ navigation }: any) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  // Refresh when returning to this tab so newly-sent or newly-received
+  // messages and read-state updates are reflected immediately.
+  useFocusEffect(
+    useCallback(() => {
+      loadConversations();
+    }, [loadConversations])
+  );
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -76,12 +91,7 @@ export default function MessagesScreen({ navigation }: any) {
             <TouchableOpacity
               key={conversation.friend.id}
               style={styles.conversationCard}
-              onPress={() =>
-                navigation.navigate('Chat', {
-                  friend: conversation.friend,
-                  currentUserId,
-                })
-              }
+              onPress={() => setChatFriend(conversation.friend)}
             >
               {conversation.friend.avatar_url ? (
                 <Image
@@ -132,6 +142,38 @@ export default function MessagesScreen({ navigation }: any) {
             </TouchableOpacity>
           ))}
         </ScrollView>
+      )}
+
+      {chatFriend !== null && currentUserId !== null && (
+        <Modal
+          visible={true}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setChatFriend(null)}
+        >
+          <ChatDetailScreen
+            route={{
+              params: {
+                friend: chatFriend,
+                currentUserId: currentUserId,
+              },
+            }}
+            navigation={{
+              setOptions: () => {},
+              goBack: () => setChatFriend(null),
+            }}
+          />
+          <TouchableOpacity
+            style={styles.chatCloseButton}
+            onPress={() => {
+              setChatFriend(null);
+              refreshUnread();
+              loadConversations();
+            }}
+          >
+            <Text style={styles.chatCloseText}>✕ Close</Text>
+          </TouchableOpacity>
+        </Modal>
       )}
     </SafeAreaView>
   );
@@ -254,5 +296,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  chatCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 1000,
+  },
+  chatCloseText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
