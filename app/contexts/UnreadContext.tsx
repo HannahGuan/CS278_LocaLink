@@ -23,19 +23,35 @@ export const UnreadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const loadUser = async () => {
-    const user = await getCurrentUser();
-    if (user) {
-      setCurrentUserId(user.id);
-      await refreshUnread(user.id);
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        setCurrentUserId(user.id);
 
-      // Subscribe to new messages
-      const unsubscribe = subscribeToAllMessages(user.id, () => {
-        refreshUnread(user.id);
-      });
+        // Try to load unread count, but don't block if messages table doesn't exist yet
+        try {
+          await refreshUnread(user.id);
+        } catch (error) {
+          console.log('Could not load unread messages (messages table may not exist yet):', error);
+          // Set to 0 if table doesn't exist
+          setTotalUnread(0);
+        }
 
-      return () => {
-        unsubscribe();
-      };
+        // Subscribe to new messages
+        try {
+          const unsubscribe = subscribeToAllMessages(user.id, () => {
+            refreshUnread(user.id);
+          });
+
+          return () => {
+            unsubscribe();
+          };
+        } catch (error) {
+          console.log('Could not subscribe to messages:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user in UnreadContext:', error);
     }
   };
 
@@ -48,6 +64,8 @@ export const UnreadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTotalUnread(count);
     } catch (error) {
       console.error('Error refreshing unread count:', error);
+      // Don't throw - just set to 0
+      setTotalUnread(0);
     }
   };
 

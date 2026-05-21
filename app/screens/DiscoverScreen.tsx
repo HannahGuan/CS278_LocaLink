@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { mockFriends } from '../data/mockData';
 import {
   useEvents,
   formatDateLabel,
@@ -20,6 +19,7 @@ import {
 import { Event } from '../types';
 import { getCurrentUser } from '../../database/auth';
 import { databaseClient, UserEventRow } from '../../database/databaseClient';
+import { getFriends } from '../../database/friends';
 import CreateEventModal from './CreateEventModal';
 import EventDetailsModal from './EventDetailsModal';
 
@@ -94,6 +94,7 @@ export default function DiscoverScreen() {
   const [userEventRows, setUserEventRows] = useState<UserEventRow[]>([]);
   const [friendRsvpEventIds, setFriendRsvpEventIds] = useState<Set<string>>(new Set());
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
+  const [friendProfiles, setFriendProfiles] = useState<Map<string, { id: string; name: string }>>(new Map());
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
@@ -108,12 +109,25 @@ export default function DiscoverScreen() {
 
   const refreshFriendsContext = async (userId: string) => {
     try {
-      const [rsvpIds, friends] = await Promise.all([
+      const [rsvpIds, friendIds, friendsList] = await Promise.all([
         databaseClient.getFriendsRsvpedEventIds(userId),
         databaseClient.getAcceptedFriendIds(userId),
+        getFriends(userId),
       ]);
       setFriendRsvpEventIds(rsvpIds);
-      setFriendIds(friends);
+      setFriendIds(friendIds);
+
+      // Build a map of friend_id -> profile for quick lookups
+      const profilesMap = new Map();
+      friendsList.forEach(friendWithDetails => {
+        if (friendWithDetails.friend) {
+          profilesMap.set(friendWithDetails.friend.id, {
+            id: friendWithDetails.friend.id,
+            name: friendWithDetails.friend.name,
+          });
+        }
+      });
+      setFriendProfiles(profilesMap);
     } catch (error) {
       console.error('Error loading friends context:', error);
     }
@@ -316,11 +330,17 @@ export default function DiscoverScreen() {
           const isPending = pendingRsvpEventId === event.id;
           const attendeeCount = event.attendees.length + (isGoing ? 1 : 0);
           const isUserCreated = isUserEventId(event.id);
+          const isFriendCreated = isUserCreated && friendIds.has(event.organizer);
+
           return (
             <View key={event.id} style={styles.eventCard}>
               {isUserCreated && (
                 <View style={styles.userEventTag}>
-                  <Text style={styles.userEventTagText}>From a Stanford student</Text>
+                  <Text style={styles.userEventTagText}>
+                    {isFriendCreated
+                      ? `From ${friendProfiles.get(event.organizer)?.name || 'a friend'}`
+                      : 'From a Stanford student'}
+                  </Text>
                 </View>
               )}
               <View style={styles.eventHeader}>
@@ -347,18 +367,6 @@ export default function DiscoverScreen() {
 
               <View style={styles.eventFooter}>
                 <View style={styles.attendeesRow}>
-                  <View style={styles.attendeesAvatars}>
-                    {mockFriends.slice(0, 3).map((friend, index) => (
-                      <Image
-                        key={friend.id}
-                        source={{ uri: friend.photo }}
-                        style={[
-                          styles.attendeeAvatar,
-                          { marginLeft: index > 0 ? -8 : 0 },
-                        ]}
-                      />
-                    ))}
-                  </View>
                   <Text style={styles.attendeesText}>
                     {attendeeCount} attending
                   </Text>
@@ -426,9 +434,9 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FFFFFF',
-    paddingTop: 16,
+    paddingTop: 12,
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
   },
@@ -436,29 +444,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   title: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '700',
     color: '#000000',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#666666',
-    marginTop: 2,
+    marginTop: 1,
   },
   addButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     backgroundColor: '#8C1515',
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   addButtonText: {
-    fontSize: 24,
+    fontSize: 22,
     color: '#FFFFFF',
     fontWeight: '300',
   },
@@ -466,17 +474,17 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     backgroundColor: '#F2F2F7',
-    marginRight: 8,
+    marginRight: 6,
   },
   tabActive: {
     backgroundColor: '#8C1515',
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666666',
   },
   tabTextActive: {
@@ -485,19 +493,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
+    padding: 12,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: '#000000',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   eventCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -507,55 +515,55 @@ const styles = StyleSheet.create({
   userEventTag: {
     alignSelf: 'flex-start',
     backgroundColor: '#F4E8E9',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginBottom: 6,
   },
   userEventTagText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: '#8C1515',
     letterSpacing: 0.2,
   },
   eventHeader: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
+    gap: 10,
+    marginBottom: 8,
   },
   eventIconBox: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     backgroundColor: '#7C3AED',
-    borderRadius: 12,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   eventImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 10,
     backgroundColor: '#E5E5EA',
   },
   eventIcon: {
-    fontSize: 28,
+    fontSize: 24,
   },
   eventInfo: {
     flex: 1,
   },
   eventTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#000000',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   eventDescription: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666666',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   eventDetail: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666666',
     marginBottom: 2,
   },
@@ -563,7 +571,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',
   },
@@ -571,16 +579,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  attendeesAvatars: {
-    flexDirection: 'row',
-  },
-  attendeeAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
   },
   attendeesText: {
     fontSize: 13,

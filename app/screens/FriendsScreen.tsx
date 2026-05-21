@@ -29,15 +29,32 @@ import ChatDetailScreen from './ChatDetailScreen';
 import {
   getUnreadCountsByFriend,
   subscribeToAllMessages,
+  getConversations,
+  Conversation,
 } from '../../database/messages';
 import { useUnread } from '../contexts/UnreadContext';
 
-type TabType = 'friends' | 'nearby';
+type TabType = 'friends' | 'nearby' | 'messages';
 
 function formatDistance(miles: number): string {
   if (miles < 0.1) return '< 0.1 mi';
   if (miles < 10) return `${miles.toFixed(1)} mi`;
   return `${Math.round(miles)} mi`;
+}
+
+function formatTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
+  return date.toLocaleDateString();
 }
 
 export default function FriendsScreen() {
@@ -59,11 +76,14 @@ export default function FriendsScreen() {
     { profile: Profile; distanceMiles: number | null }[]
   >([]);
   const [isLoadingNearby, setIsLoadingNearby] = useState<boolean>(true);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
   const { refreshUnread } = useUnread();
 
   const tabs = [
     { id: 'friends' as const, label: 'Friends', icon: '👥' },
     { id: 'nearby' as const, label: 'Nearby', icon: '📍' },
+    { id: 'messages' as const, label: 'Messages', icon: '💬' },
   ];
 
   useEffect(() => {
@@ -86,11 +106,13 @@ export default function FriendsScreen() {
         refreshIncoming(user.id, cancelled),
         refreshUnreadCounts(user.id),
         refreshNearby(user.id, cancelled),
+        refreshConversations(user.id, cancelled),
       ]);
 
       // Subscribe to new messages for real-time unread updates
       const unsubscribe = subscribeToAllMessages(user.id, () => {
         refreshUnreadCounts(user.id);
+        refreshConversations(user.id, false);
       });
 
       return () => {
@@ -172,6 +194,22 @@ export default function FriendsScreen() {
     } finally {
       if (!cancelled) {
         setIsLoadingIncoming(false);
+      }
+    }
+  };
+
+  const refreshConversations = async (userId: string, cancelled = false) => {
+    setIsLoadingConversations(true);
+    try {
+      const convos = await getConversations(userId);
+      if (!cancelled) {
+        setConversations(convos);
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+    } finally {
+      if (!cancelled) {
+        setIsLoadingConversations(false);
       }
     }
   };
@@ -354,8 +392,8 @@ export default function FriendsScreen() {
                         </View>
                       )}
                       {unreadCount > 0 && (
-                        <View style={styles.unreadBadge}>
-                          <Text style={styles.unreadBadgeText}>
+                        <View style={styles.friendUnreadBadge}>
+                          <Text style={styles.friendUnreadBadgeText}>
                             {unreadCount > 9 ? '9+' : unreadCount}
                           </Text>
                         </View>
@@ -466,6 +504,80 @@ export default function FriendsScreen() {
                   </View>
                 );
               })
+            )}
+          </View>
+        )}
+
+        {/* Messages Tab */}
+        {selectedTab === 'messages' && (
+          <View>
+            {isLoadingConversations ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator size="small" color="#8C1515" />
+              </View>
+            ) : conversations.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>💬</Text>
+                <Text style={styles.emptyStateText}>No messages yet</Text>
+                <Text style={styles.emptySubtext}>Start chatting with your friends!</Text>
+              </View>
+            ) : (
+              conversations.map((conversation) => (
+                <TouchableOpacity
+                  key={conversation.friend.id}
+                  style={styles.conversationCard}
+                  onPress={() => setChatFriend(conversation.friend)}
+                >
+                  {conversation.friend.avatar_url ? (
+                    <Image
+                      source={{ uri: conversation.friend.avatar_url }}
+                      style={styles.conversationAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.conversationAvatar, styles.conversationAvatarFallback]}>
+                      <Text style={styles.conversationAvatarText}>
+                        {conversation.friend.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.conversationContent}>
+                    <View style={styles.conversationHeader}>
+                      <Text style={styles.conversationName}>{conversation.friend.name}</Text>
+                      {conversation.lastMessage && (
+                        <Text style={styles.conversationTime}>
+                          {formatTime(conversation.lastMessage.created_at)}
+                        </Text>
+                      )}
+                    </View>
+
+                    {conversation.lastMessage ? (
+                      <Text
+                        style={[
+                          styles.conversationMessage,
+                          conversation.unreadCount > 0 && styles.conversationMessageUnread,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {conversation.lastMessage.sender_id === currentUserId
+                          ? 'You: '
+                          : ''}
+                        {conversation.lastMessage.content}
+                      </Text>
+                    ) : (
+                      <Text style={styles.conversationNoMessage}>No messages yet</Text>
+                    )}
+                  </View>
+
+                  {conversation.unreadCount > 0 && (
+                    <View style={styles.conversationUnreadBadge}>
+                      <Text style={styles.conversationUnreadText}>
+                        {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))
             )}
           </View>
         )}
@@ -677,9 +789,9 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FFFFFF',
-    paddingTop: 16,
+    paddingTop: 12,
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
   },
@@ -689,39 +801,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '700',
     color: '#000000',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#666666',
-    marginTop: 2,
-    marginBottom: 16,
+    marginTop: 1,
+    marginBottom: 8,
   },
   tabsScroll: {
     flexGrow: 0,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     backgroundColor: '#F2F2F7',
-    marginRight: 8,
-    gap: 6,
+    marginRight: 6,
+    gap: 4,
   },
   tabActive: {
     backgroundColor: '#8C1515',
   },
   tabIcon: {
-    fontSize: 16,
+    fontSize: 14,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666666',
     fontWeight: '500',
   },
@@ -788,12 +900,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#000000',
   },
@@ -804,10 +916,10 @@ const styles = StyleSheet.create({
   nearbyCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
+    borderRadius: 10,
+    padding: 12,
+    marginHorizontal: 12,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -815,10 +927,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   nearbyAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    marginRight: 12,
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    marginRight: 10,
   },
   nearbyAvatarFallback: {
     backgroundColor: '#F4E8E9',
@@ -826,7 +938,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   nearbyAvatarFallbackText: {
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: '600',
     color: '#8C1515',
   },
@@ -845,45 +957,45 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   nearbyName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#000000',
   },
   distanceBadge: {
     backgroundColor: '#F2F2F7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   distanceBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#666666',
   },
   nearbyInfo: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666666',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   interestsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 10,
+    gap: 4,
+    marginBottom: 8,
   },
   interestTag: {
     backgroundColor: '#F4E8E9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   interestText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#8C1515',
   },
   waveButton: {
     backgroundColor: '#8C1515',
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 8,
     alignItems: 'center',
   },
@@ -934,27 +1046,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   section: {
-    paddingHorizontal: 16,
-    marginBottom: 24,
+    paddingHorizontal: 12,
+    marginBottom: 16,
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 24,
   },
   emptyIcon: {
-    fontSize: 48,
-    marginBottom: 8,
+    fontSize: 40,
+    marginBottom: 6,
   },
   emptyText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#999999',
   },
   suggestionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    padding: 10,
     marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1044,54 +1156,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 16,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: 10,
   },
   friendAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
-  unreadBadge: {
+  friendUnreadBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -3,
+    right: -3,
     backgroundColor: '#FF3B30',
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
-  unreadBadgeText: {
+  friendUnreadBadgeText: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
   },
   friendContent: {
     flex: 1,
   },
   friendName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#000000',
     marginBottom: 2,
   },
   friendInfo: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666666',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   friendBio: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#999999',
     fontStyle: 'italic',
   },
@@ -1154,5 +1266,75 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  conversationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  conversationAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 10,
+  },
+  conversationAvatarFallback: {
+    backgroundColor: '#F4E8E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  conversationAvatarText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  conversationContent: {
+    flex: 1,
+  },
+  conversationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+  conversationName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  conversationTime: {
+    fontSize: 12,
+    color: '#999999',
+  },
+  conversationMessage: {
+    fontSize: 13,
+    color: '#666666',
+  },
+  conversationMessageUnread: {
+    fontWeight: '600',
+    color: '#000000',
+  },
+  conversationNoMessage: {
+    fontSize: 13,
+    color: '#999999',
+    fontStyle: 'italic',
+  },
+  conversationUnreadBadge: {
+    backgroundColor: '#8C1515',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginLeft: 6,
+  },
+  conversationUnreadText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });
