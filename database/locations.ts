@@ -108,3 +108,39 @@ export const updateMyLocation = async (
 
   return true;
 };
+
+/**
+ * Subscribe to friend location updates
+ * Calls the callback whenever any friend updates their location
+ */
+export const subscribeFriendLocations = (
+  userId: string,
+  callback: (updatedUserId: string) => void
+) => {
+  // Subscribe to all location updates
+  // We can't filter by friend IDs in the subscription, so we listen to all
+  // and let the callback decide what to do
+  const channel = supabase
+    .channel('friend-locations')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'user_locations',
+      },
+      (payload: any) => {
+        // Pass the user_id who updated their location
+        const updatedUserId = payload.new?.user_id;
+        if (updatedUserId && updatedUserId !== userId) {
+          // Don't trigger callback for our own location updates
+          callback(updatedUserId);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};

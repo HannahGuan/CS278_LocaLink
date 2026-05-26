@@ -7,10 +7,12 @@ import {
   ScrollView,
   Image,
   Modal,
-  Pressable,
   Dimensions,
   ActivityIndicator,
+  Linking,
+  Platform,
 } from 'react-native';
+import WebView from 'react-native-webview';
 import { Event } from '../types';
 import { databaseClient } from '../../database/databaseClient';
 import { Profile } from '../../types';
@@ -23,6 +25,64 @@ interface EventDetailsModalProps {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Generate static map HTML for displaying event location
+function generateMapHTML(lat: number, lng: number, title: string): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <style>
+          body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+          #map { width: 100%; height: 100%; }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script>
+          var map = L.map('map', {
+            center: [${lat}, ${lng}],
+            zoom: 16,
+            zoomControl: false,
+            dragging: false,
+            touchZoom: false,
+            scrollWheelZoom: false,
+            doubleClickZoom: false,
+            boxZoom: false,
+            keyboard: false,
+            attributionControl: false
+          });
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+          }).addTo(map);
+          L.marker([${lat}, ${lng}]).addTo(map)
+            .bindPopup('${title.replace(/'/g, "\\'")}').openPopup();
+        </script>
+      </body>
+    </html>
+  `;
+}
+
+function openInGoogleMaps(lat: number, lng: number, label: string) {
+  const scheme = Platform.select({
+    ios: 'maps:0,0?q=',
+    android: 'geo:0,0?q='
+  });
+  const latLng = `${lat},${lng}`;
+  const url = Platform.select({
+    ios: `${scheme}${label}@${latLng}`,
+    android: `${scheme}${latLng}(${label})`
+  });
+
+  Linking.openURL(url!).catch(() => {
+    // Fallback to web Google Maps
+    const webUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    Linking.openURL(webUrl);
+  });
+}
 
 export default function EventDetailsModal({ event, onClose }: EventDetailsModalProps) {
   const [attendees, setAttendees] = useState<Profile[]>([]);
@@ -86,8 +146,13 @@ export default function EventDetailsModal({ event, onClose }: EventDetailsModalP
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={() => {}}>
+      <View style={styles.modalBackdrop}>
+        <TouchableOpacity
+          style={styles.modalBackdropTouchable}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <View style={styles.modalCard} pointerEvents="box-none">
           {event !== null && (
             <ScrollView
               style={styles.modalScroll}
@@ -152,6 +217,27 @@ export default function EventDetailsModal({ event, onClose }: EventDetailsModalP
                   </View>
                 </View>
 
+                {/* Map Preview */}
+                {event.locationCoords && (
+                  <View style={styles.mapContainer}>
+                    <View style={styles.mapPreview}>
+                      <WebView
+                        source={{ html: generateMapHTML(event.locationCoords.lat, event.locationCoords.lng, event.title) }}
+                        style={styles.mapWebView}
+                        scrollEnabled={false}
+                        pointerEvents="none"
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={styles.mapButton}
+                      onPress={() => openInGoogleMaps(event.locationCoords.lat, event.locationCoords.lng, event.location)}
+                    >
+                      <Text style={styles.mapButtonIcon}>🗺️</Text>
+                      <Text style={styles.mapButtonText}>Open in Maps</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {event.description.length > 0 && (
                   <>
                     <View style={styles.modalDivider} />
@@ -199,13 +285,13 @@ export default function EventDetailsModal({ event, onClose }: EventDetailsModalP
                   ))
                 )}
               </View>
-            </ScrollView>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
 const styles = StyleSheet.create({
   modalBackdrop: {
@@ -213,10 +299,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+  },
+  modalBackdropTouchable: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalCard: {
-    width: '100%',
+    width: '90%',
     height: WINDOW_HEIGHT * 0.85,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -370,5 +462,39 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#000000',
     fontWeight: '500',
+  },
+  mapContainer: {
+    marginTop: 12,
+    gap: 12,
+  },
+  mapPreview: {
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#E5E5EA',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  mapWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  mapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8C1515',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    gap: 8,
+  },
+  mapButtonIcon: {
+    fontSize: 20,
+  },
+  mapButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

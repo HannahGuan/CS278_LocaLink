@@ -8,6 +8,9 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
+  Keyboard,
+  Platform,
+  Animated,
 } from 'react-native';
 import WebView, { WebViewMessageEvent } from 'react-native-webview';
 
@@ -168,6 +171,7 @@ export default function LocationPickerModal({
   const [pickedLng, setPickedLng] = useState<number | null>(initial?.lng ?? null);
   const [name, setName] = useState<string>(initial?.name ?? '');
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
+  const [keyboardHeight] = useState(new Animated.Value(0));
 
   // Re-seed state every time the modal opens.
   useEffect(() => {
@@ -178,6 +182,36 @@ export default function LocationPickerModal({
       setIsGeocoding(false);
     }
   }, [visible, initial]);
+
+  // Handle keyboard show/hide
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        Animated.timing(keyboardHeight, {
+          toValue: e.endCoordinates.height,
+          duration: e.duration,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      (e) => {
+        Animated.timing(keyboardHeight, {
+          toValue: 0,
+          duration: e.duration,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
 
   const mapHtml = useMemo(() => buildMapHtml(initial), [initial, visible]);
 
@@ -258,7 +292,14 @@ export default function LocationPickerModal({
           />
         </View>
 
-        <View style={styles.footer}>
+        <Animated.View
+          style={[
+            styles.footer,
+            {
+              transform: [{ translateY: Animated.multiply(keyboardHeight, -1) }],
+            },
+          ]}
+        >
           <Text style={styles.label}>Name this spot</Text>
           <View style={styles.nameRow}>
             <TextInput
@@ -268,12 +309,15 @@ export default function LocationPickerModal({
               value={name}
               onChangeText={setName}
               maxLength={80}
+              returnKeyType="done"
+              blurOnSubmit={true}
+              autoCapitalize="words"
             />
             {isGeocoding && (
               <ActivityIndicator color="#8C1515" style={styles.geocodeSpinner} />
             )}
           </View>
-        </View>
+        </Animated.View>
       </SafeAreaView>
     </Modal>
   );
@@ -344,7 +388,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 16,
+    paddingBottom: 24,
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',
     gap: 8,

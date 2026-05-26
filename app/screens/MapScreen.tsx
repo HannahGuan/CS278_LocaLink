@@ -16,7 +16,7 @@ import * as Location from 'expo-location';
 
 import { useEvents, userEventRowToEvent, isUserEventId } from '../api/eventClient';
 import { Event } from '../types';
-import { getFriendLocations, updateMyLocation, FriendLocation } from '../../database/locations';
+import { getFriendLocations, updateMyLocation, subscribeFriendLocations, FriendLocation } from '../../database/locations';
 import { getCurrentUser } from '../../database/auth';
 import { databaseClient, UserEventRow } from '../../database/databaseClient';
 import EventDetailsModal from './EventDetailsModal';
@@ -166,6 +166,7 @@ export default function MapScreen() {
   const [friendLocations, setFriendLocations] = useState<FriendLocation[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
 
   const filters = [
     { id: 'all' as const, label: '📍 All', icon: '📍' },
@@ -173,8 +174,12 @@ export default function MapScreen() {
     { id: 'events' as const, label: '📅 Events', icon: '📅' },
   ];
 
-  // Get current user and friend locations on mount
+  // Get current user and friend locations on mount, and subscribe to updates
   useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let refreshTimeout: NodeJS.Timeout | null = null;
+    let currentFriendIds = new Set<string>();
+
     const loadData = async () => {
       try {
         // Get current user
@@ -183,8 +188,30 @@ export default function MapScreen() {
           setCurrentUserId(user.id);
 
           // Load friend locations
-          const locations = await getFriendLocations(user.id);
-          setFriendLocations(locations);
+          const loadFriendLocations = async () => {
+            const locations = await getFriendLocations(user.id);
+            setFriendLocations(locations);
+
+            // Update friend IDs set for filtering (local and state)
+            currentFriendIds = new Set(locations.map(loc => loc.friend.id));
+            setFriendIds(currentFriendIds);
+          };
+
+          await loadFriendLocations();
+
+          // Subscribe to real-time location updates
+          unsubscribe = subscribeFriendLocations(user.id, (updatedUserId: string) => {
+            // Only refresh if the updated user is a friend
+            if (currentFriendIds.has(updatedUserId)) {
+              // Debounce: clear existing timeout and set a new one
+              if (refreshTimeout) {
+                clearTimeout(refreshTimeout);
+              }
+              refreshTimeout = setTimeout(() => {
+                loadFriendLocations();
+              }, 2000); // Wait 2 seconds before refreshing to avoid too many updates
+            }
+          });
         }
       } catch (error) {
         console.error('Error loading friend data:', error);
@@ -194,7 +221,34 @@ export default function MapScreen() {
     };
 
     loadData();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+    };
   }, []);
+
+  // Refresh friend locations when user returns to this tab
+  useFocusEffect(
+    useCallback(() => {
+      const refreshFriendLocations = async () => {
+        if (currentUserId) {
+          try {
+            const locations = await getFriendLocations(currentUserId);
+            setFriendLocations(locations);
+          } catch (error) {
+            console.error('Error refreshing friend locations:', error);
+          }
+        }
+      };
+
+      refreshFriendLocations();
+    }, [currentUserId])
+  );
 
   // Load user-created events so they show up as map markers alongside the
   // Stanford RSS feed. Re-run on every focus so events created in Discover
@@ -204,7 +258,7 @@ export default function MapScreen() {
       let cancelled = false;
       const loadUserEvents = async () => {
         try {
-          const rows = await databaseClient.getUserEvents();
+          const rows = await databaseClient.getUserEvents(currentUserId || undefined);
           if (!cancelled) {
             setUserEventRows(rows);
           }
@@ -216,7 +270,7 @@ export default function MapScreen() {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [currentUserId])
   );
 
   // Get user location on mount and update to database

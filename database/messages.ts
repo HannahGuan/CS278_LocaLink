@@ -235,7 +235,7 @@ export const subscribeToAllMessages = (
         event: 'INSERT',
         schema: 'public',
         table: 'messages',
-        filter: `recipient_id=eq.${userId}`,
+        filter: `recipient_id.eq.${userId}`,
       },
       () => {
         callback();

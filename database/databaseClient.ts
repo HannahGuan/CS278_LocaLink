@@ -41,6 +41,7 @@ export interface UserEventRow {
   icon: string;
   image_url: string | null;
   created_at: string;
+  is_friend_only: boolean;
 }
 
 interface ProfileWithPrivacy extends Profile {
@@ -87,6 +88,7 @@ export interface CreateUserEventInput {
   startsAt: Date;
   category: string;
   icon: string;
+  isFriendOnly?: boolean;
 }
 
 /**
@@ -318,6 +320,7 @@ export class DatabaseClient {
         starts_at: input.startsAt.toISOString(),
         category: input.category,
         icon: input.icon,
+        is_friend_only: input.isFriendOnly ?? false,
       })
       .select()
       .single();
@@ -328,7 +331,7 @@ export class DatabaseClient {
     return data as UserEventRow;
   }
 
-  async getUserEvents(): Promise<UserEventRow[]> {
+  async getUserEvents(currentUserId?: string): Promise<UserEventRow[]> {
     const { data, error } = await this.client
       .from('user_events')
       .select('*')
@@ -337,7 +340,45 @@ export class DatabaseClient {
     if (error !== null) {
       throw new DatabaseError(`Failed to fetch user events: ${error.message}`, error);
     }
-    return (data ?? []) as UserEventRow[];
+
+    const allEvents = (data ?? []) as UserEventRow[];
+
+    // If no current user, return only public events
+    if (!currentUserId) {
+      return allEvents.filter(event => !event.is_friend_only);
+    }
+
+    // Get user's friend IDs
+    const { data: friendships, error: friendError } = await this.client
+      .from('friends')
+      .select('friend_id')
+      .eq('user_id', currentUserId)
+      .eq('status', 'accepted');
+
+    if (friendError) {
+      console.error('Error fetching friendships:', friendError);
+      // On error, show only public events
+      return allEvents.filter(event => !event.is_friend_only);
+    }
+
+    const friendIds = new Set((friendships ?? []).map((f: any) => f.friend_id));
+
+    // Filter events: show public events + friend-only events from friends + own events
+    return allEvents.filter(event => {
+      // Show own events
+      if (event.created_by === currentUserId) {
+        return true;
+      }
+      // Show public events
+      if (!event.is_friend_only) {
+        return true;
+      }
+      // Show friend-only events from friends
+      if (event.is_friend_only && friendIds.has(event.created_by)) {
+        return true;
+      }
+      return false;
+    });
   }
 
   /**

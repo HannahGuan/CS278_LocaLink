@@ -11,6 +11,8 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { getCurrentUser } from '../../database/auth';
 import {
@@ -113,6 +115,7 @@ export default function FriendsScreen() {
       const unsubscribe = subscribeToAllMessages(user.id, () => {
         refreshUnreadCounts(user.id);
         refreshConversations(user.id, false);
+        refreshUnread(); // Update global badge count
       });
 
       return () => {
@@ -599,7 +602,16 @@ export default function FriendsScreen() {
             <View style={{ width: 60 }} />
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <ScrollView
+              style={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 40 }}
+            >
             {/* Search Section */}
             <View style={styles.searchSection}>
               <Text style={styles.searchTitle}>Find Stanford Students</Text>
@@ -616,6 +628,9 @@ export default function FriendsScreen() {
                   onChangeText={setSearchQuery}
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  returnKeyType="send"
+                  onSubmitEditing={handleSendRequest}
+                  autoCorrect={false}
                 />
                 <TouchableOpacity
                   style={[
@@ -739,7 +754,8 @@ export default function FriendsScreen() {
                 ))
               )}
             </View>
-          </ScrollView>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
 

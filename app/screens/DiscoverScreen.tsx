@@ -98,9 +98,9 @@ export default function DiscoverScreen() {
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
-  const refreshUserEvents = async () => {
+  const refreshUserEvents = async (userId?: string) => {
     try {
-      const rows = await databaseClient.getUserEvents();
+      const rows = await databaseClient.getUserEvents(userId || currentUserId || undefined);
       setUserEventRows(rows);
     } catch (error) {
       console.error('Error loading user events:', error);
@@ -149,7 +149,7 @@ export default function DiscoverScreen() {
       } catch (error) {
         console.error('Error loading RSVPs:', error);
       }
-      await Promise.all([refreshUserEvents(), refreshFriendsContext(user.id)]);
+      await Promise.all([refreshUserEvents(user.id), refreshFriendsContext(user.id)]);
     };
     load();
     return () => {

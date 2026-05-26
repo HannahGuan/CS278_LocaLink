@@ -74,6 +74,7 @@ export default function CreateEventModal({
   const [eventDate, setEventDate] = useState<Date>(new Date());
   const [eventTime, setEventTime] = useState<Date>(defaultStartTime());
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number>(0);
+  const [isFriendOnly, setIsFriendOnly] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showLocationPicker, setShowLocationPicker] = useState<boolean>(false);
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
@@ -92,6 +93,7 @@ export default function CreateEventModal({
     setEventDate(new Date());
     setEventTime(defaultStartTime());
     setSelectedCategoryIndex(0);
+    setIsFriendOnly(false);
   };
 
   const handleClose = () => {
@@ -149,6 +151,7 @@ export default function CreateEventModal({
         startsAt,
         category: category.label,
         icon: category.icon,
+        isFriendOnly: isFriendOnly,
       });
       resetForm();
       onCreated();
@@ -191,12 +194,14 @@ export default function CreateEventModal({
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <ScrollView
             style={styles.content}
             showsVerticalScrollIndicator={false as boolean}
             keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 40 }}
           >
             <View style={styles.previewCard}>
               <View style={styles.previewBox}>
@@ -226,6 +231,8 @@ export default function CreateEventModal({
                 value={title}
                 onChangeText={setTitle}
                 maxLength={80}
+                returnKeyType="next"
+                autoCapitalize="sentences"
               />
             </View>
 
@@ -239,6 +246,9 @@ export default function CreateEventModal({
                 onChangeText={setDescription}
                 multiline={true}
                 maxLength={300}
+                returnKeyType="done"
+                blurOnSubmit={true}
+                autoCapitalize="sentences"
               />
             </View>
 
@@ -366,6 +376,28 @@ export default function CreateEventModal({
                   );
                 })}
               </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Visibility</Text>
+              <TouchableOpacity
+                style={styles.visibilityToggle}
+                onPress={() => setIsFriendOnly(!isFriendOnly)}
+              >
+                <View style={styles.visibilityInfo}>
+                  <Text style={styles.visibilityTitle}>
+                    {isFriendOnly ? '🔒 Friends Only' : '🌍 Public'}
+                  </Text>
+                  <Text style={styles.visibilityDescription}>
+                    {isFriendOnly
+                      ? 'Only your friends can see this event'
+                      : 'Everyone on campus can see this event'}
+                  </Text>
+                </View>
+                <View style={[styles.toggleSwitch, isFriendOnly && styles.toggleSwitchActive]}>
+                  <View style={[styles.toggleThumb, isFriendOnly && styles.toggleThumbActive]} />
+                </View>
+              </TouchableOpacity>
             </View>
 
             <View style={{ height: 40 }} />
@@ -576,5 +608,54 @@ const styles = StyleSheet.create({
   categoryLabelActive: {
     color: '#8C1515',
     fontWeight: '600',
+  },
+  visibilityToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  visibilityInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  visibilityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  visibilityDescription: {
+    fontSize: 13,
+    color: '#666666',
+  },
+  toggleSwitch: {
+    width: 51,
+    height: 31,
+    borderRadius: 16,
+    backgroundColor: '#E5E5EA',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: '#8C1515',
+  },
+  toggleThumb: {
+    width: 27,
+    height: 27,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleThumbActive: {
+    transform: [{ translateX: 20 }],
   },
 });
