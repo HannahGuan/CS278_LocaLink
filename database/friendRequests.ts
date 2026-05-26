@@ -60,3 +60,36 @@ export const addFriendByEmail = async (
   await client.createFriendRequest(requesterId, recipient.id);
   return { kind: 'sent', recipient };
 };
+
+/**
+ * Send a friend request to a profile we already have in hand (e.g. from the
+ * Nearby list), skipping the email lookup. Same outcome semantics as
+ * addFriendByEmail.
+ */
+export const addFriendByProfile = async (
+  requesterId: string,
+  recipient: Profile,
+  client: DatabaseClient = databaseClient
+): Promise<AddFriendOutcome> => {
+  if (recipient.id === requesterId) {
+    return { kind: 'self_request' };
+  }
+
+  const existing = await client.findFriendship(requesterId, recipient.id);
+  if (existing !== null) {
+    if (existing.status === 'accepted') {
+      return { kind: 'already_friends', recipient };
+    }
+    if (existing.status === 'pending') {
+      return {
+        kind: 'request_pending',
+        recipient,
+        direction: existing.user_id === requesterId ? 'outgoing' : 'incoming',
+      };
+    }
+    // status === 'rejected' — fall through and let the user re-request.
+  }
+
+  await client.createFriendRequest(requesterId, recipient.id);
+  return { kind: 'sent', recipient };
+};

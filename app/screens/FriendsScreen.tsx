@@ -22,6 +22,7 @@ import {
 } from '../../database/databaseClient';
 import {
   addFriendByEmail,
+  addFriendByProfile,
   AddFriendOutcome,
 } from '../../database/friendRequests';
 import { getFriends } from '../../database/friends';
@@ -71,6 +72,7 @@ export default function FriendsScreen() {
   const [isLoadingIncoming, setIsLoadingIncoming] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [sendingFriendProfileId, setSendingFriendProfileId] = useState<string | null>(null);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [chatFriend, setChatFriend] = useState<Profile | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Map<string, number>>(new Map());
@@ -127,6 +129,18 @@ export default function FriendsScreen() {
       cancelled = true;
     };
   }, []);
+
+  // Auto-refresh the "Nearby" list when any profile's privacy_settings
+  // change so users who flip on ghost mode disappear in real time.
+  useEffect(() => {
+    if (currentUserId === null) {
+      return;
+    }
+    const unsubscribe = databaseClient.subscribeProfileUpdates(() => {
+      refreshNearby(currentUserId);
+    });
+    return unsubscribe;
+  }, [currentUserId]);
 
   const refreshUnreadCounts = async (userId: string) => {
     try {
@@ -293,6 +307,43 @@ export default function FriendsScreen() {
         return;
     }
   };
+
+  const handleAddFriendFromNearby = async (recipient: Profile) => {
+    if (currentUserId === null) {
+      Alert.alert('Not signed in', 'Please log in again to send friend requests.');
+      return;
+    }
+    if (sendingFriendProfileId !== null) {
+      return;
+    }
+    setSendingFriendProfileId(recipient.id);
+    try {
+      const outcome = await addFriendByProfile(currentUserId, recipient);
+      announceOutcome(outcome);
+      if (outcome.kind === 'sent' || outcome.kind === 'request_pending') {
+        await refreshPending(currentUserId);
+      }
+      if (outcome.kind === 'already_friends') {
+        // They became friends in another session — drop them from Nearby.
+        await refreshNearby(currentUserId);
+      }
+    } catch (error) {
+      console.error('Error sending friend request from nearby:', error);
+      Alert.alert(
+        'Something went wrong',
+        'We could not send the request. Please try again in a moment.'
+      );
+    } finally {
+      setSendingFriendProfileId(null);
+    }
+  };
+
+  // Profiles we already have an outbound pending request to — used to swap
+  // the Nearby "Add Friend" button into a disabled "Requested" state without
+  // an extra round-trip.
+  const outgoingPendingProfileIds = new Set(
+    pendingRequests.map((request) => request.recipient.id)
+  );
 
   const handleSendRequest = async () => {
     if (currentUserId === null) {
@@ -497,12 +548,42 @@ export default function FriendsScreen() {
                           ))}
                         </View>
                       )}
-                      <TouchableOpacity
-                        style={styles.waveButton}
-                        onPress={() => setChatFriend(profile)}
-                      >
-                        <Text style={styles.waveButtonText}>💬 Send Message</Text>
-                      </TouchableOpacity>
+                      <View style={styles.nearbyActions}>
+                        <TouchableOpacity
+                          style={[
+                            styles.addFriendButton,
+                            outgoingPendingProfileIds.has(profile.id) &&
+                              styles.addFriendButtonRequested,
+                          ]}
+                          onPress={() => handleAddFriendFromNearby(profile)}
+                          disabled={
+                            sendingFriendProfileId !== null ||
+                            outgoingPendingProfileIds.has(profile.id)
+                          }
+                        >
+                          {sendingFriendProfileId === profile.id ? (
+                            <ActivityIndicator size="small" color="#8C1515" />
+                          ) : (
+                            <Text
+                              style={[
+                                styles.addFriendButtonText,
+                                outgoingPendingProfileIds.has(profile.id) &&
+                                  styles.addFriendButtonTextRequested,
+                              ]}
+                            >
+                              {outgoingPendingProfileIds.has(profile.id)
+                                ? '✓ Requested'
+                                : '+ Add Friend'}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.waveButton}
+                          onPress={() => setChatFriend(profile)}
+                        >
+                          <Text style={styles.waveButtonText}>💬 Message</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 );
@@ -1010,6 +1091,7 @@ const styles = StyleSheet.create({
     color: '#8C1515',
   },
   waveButton: {
+    flex: 1,
     backgroundColor: '#8C1515',
     paddingVertical: 6,
     borderRadius: 8,
@@ -1019,6 +1101,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  nearbyActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  addFriendButton: {
+    flex: 1,
+    backgroundColor: '#F4E8E9',
+    borderWidth: 1,
+    borderColor: '#8C1515',
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addFriendButtonRequested: {
+    backgroundColor: '#F2F2F7',
+    borderColor: '#C7C7CC',
+  },
+  addFriendButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8C1515',
+  },
+  addFriendButtonTextRequested: {
+    color: '#8E8E93',
   },
   // Add Friends
   searchSection: {

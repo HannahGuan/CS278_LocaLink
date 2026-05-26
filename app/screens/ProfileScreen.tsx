@@ -105,7 +105,12 @@ export default function ProfileScreen({ navigation }: any) {
     if (error) {
       console.error('Error updating privacy settings:', error);
       Alert.alert('Error', 'Failed to update settings');
+      return;
     }
+
+    // Keep local state in sync — otherwise the next toggle spreads stale
+    // settings and silently overwrites this one.
+    setProfile({ ...profile, privacy_settings: newSettings });
   };
 
   const handleEditBio = () => {

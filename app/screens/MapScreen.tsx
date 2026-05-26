@@ -273,6 +273,39 @@ export default function MapScreen() {
     }, [currentUserId])
   );
 
+  // Auto-refresh user events while the Map screen is mounted so newly
+  // created events appear as markers without requiring a tab switch.
+  useEffect(() => {
+    const unsubscribe = databaseClient.subscribeUserEvents(async () => {
+      try {
+        const rows = await databaseClient.getUserEvents(currentUserId || undefined);
+        setUserEventRows(rows);
+      } catch (error) {
+        console.error('Error refreshing user events for map:', error);
+      }
+    });
+    return unsubscribe;
+  }, [currentUserId]);
+
+  // When any user flips their privacy_settings (ghost mode), refetch friend
+  // locations so markers disappear/reappear without requiring a tab switch.
+  // The actual visibility is enforced by RLS on user_locations — this just
+  // invalidates the cached read.
+  useEffect(() => {
+    if (currentUserId === null) {
+      return;
+    }
+    const unsubscribe = databaseClient.subscribeProfileUpdates(async () => {
+      try {
+        const locations = await getFriendLocations(currentUserId);
+        setFriendLocations(locations);
+      } catch (error) {
+        console.error('Error refreshing friend locations on profile update:', error);
+      }
+    });
+    return unsubscribe;
+  }, [currentUserId]);
+
   // Get user location on mount and update to database
   useEffect(() => {
     (async () => {

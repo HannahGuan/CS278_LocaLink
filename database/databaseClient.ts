@@ -55,9 +55,14 @@ interface LocationRow {
   timestamp: string;
 }
 
-// Discovery Mode defaults to ON: only an explicit `false` opts out.
+// Both toggles default to ON. A non-friend sees a profile only when both
+// are on — showToFriends=false is the global mute, showToMatches=false
+// hides from non-friends specifically.
 function isDiscoverable(profile: ProfileWithPrivacy): boolean {
-  return profile.privacy_settings?.showToMatches !== false;
+  return (
+    profile.privacy_settings?.showToFriends !== false &&
+    profile.privacy_settings?.showToMatches !== false
+  );
 }
 
 // Haversine — straight-line miles between two lat/lng pairs.
@@ -329,6 +334,69 @@ export class DatabaseClient {
       throw new DatabaseError(`Failed to create event: ${error.message}`, error);
     }
     return data as UserEventRow;
+  }
+
+  /**
+   * Subscribe to profile updates so screens can react to privacy_settings
+   * changes (ghost mode) in real time. Fires for every UPDATE on profiles —
+   * the caller decides whether to re-query (RLS will hide newly-ghost users
+   * on the refetch).
+   */
+  subscribeProfileUpdates(callback: () => void): () => void {
+    const channelName = `profile-updates-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+    const channel = this.client
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+        },
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      this.client.removeChannel(channel);
+    };
+  }
+
+  /**
+   * Subscribe to new user_events inserts so screens can auto-refresh when
+   * any user creates an event. The callback fires for every insert — the
+   * caller is responsible for re-querying via getUserEvents, which applies
+   * friend-only visibility filtering.
+   */
+  subscribeUserEvents(callback: () => void): () => void {
+    // Unique channel name per subscriber: Supabase channels are
+    // singletons keyed by name, so reusing a fixed name would let two
+    // simultaneous subscribers (e.g. Discover + Map) clobber each other.
+    const channelName = `user-events-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+    const channel = this.client
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'user_events',
+        },
+        () => {
+          callback();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      this.client.removeChannel(channel);
+    };
   }
 
   async getUserEvents(currentUserId?: string): Promise<UserEventRow[]> {

@@ -157,6 +157,15 @@ export default function DiscoverScreen() {
     };
   }, []);
 
+  // Auto-refresh when any user creates a new event so the feed stays live
+  // without requiring a tab switch.
+  useEffect(() => {
+    const unsubscribe = databaseClient.subscribeUserEvents(() => {
+      refreshUserEvents();
+    });
+    return unsubscribe;
+  }, [currentUserId]);
+
   const allEvents = useMemo(() => {
     const userEvents = userEventRows.map(userEventRowToEvent);
     return [...userEvents, ...feedEvents];
