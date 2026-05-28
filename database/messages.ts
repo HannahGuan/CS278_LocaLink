@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Profile } from '../types';
+import { notifyNewMessage } from '../services/notifications';
 
 export interface Message {
   id: string;
@@ -128,6 +129,20 @@ export const sendMessage = async (
     return null;
   }
 
+  // Get sender's name for notification
+  const { data: senderProfile } = await supabase
+    .from('profiles')
+    .select('name')
+    .eq('id', senderId)
+    .single();
+
+  // Send push notification (fire and forget)
+  if (senderProfile?.name) {
+    notifyNewMessage(recipientId, senderProfile.name, content).catch((err) => {
+      console.error('Failed to send message notification:', err);
+    });
+  }
+
   return data;
 };
 
@@ -144,6 +159,8 @@ export const markMessagesAsRead = async (userId: string, friendId: string): Prom
 
   if (error) {
     console.error('Error marking messages as read:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    throw error;
   }
 };
 

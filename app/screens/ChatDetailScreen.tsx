@@ -19,7 +19,7 @@ import {
   subscribeToMessages,
   Message,
 } from '../../database/messages';
-import { Profile } from '../types';
+import { Profile } from '../../types';
 
 interface ChatDetailScreenProps {
   route: {
@@ -45,12 +45,16 @@ export default function ChatDetailScreen({ route, navigation }: ChatDetailScreen
     });
 
     loadMessages();
-    markMessagesAsRead(currentUserId, friend.id);
+    markMessagesAsRead(currentUserId, friend.id).catch((err) => {
+      console.error('Failed to mark messages as read on mount:', err);
+    });
 
     // Subscribe to new messages
     const unsubscribe = subscribeToMessages(currentUserId, friend.id, (newMsg) => {
       setMessages((prev) => [...prev, newMsg]);
-      markMessagesAsRead(currentUserId, friend.id);
+      markMessagesAsRead(currentUserId, friend.id).catch((err) => {
+        console.error('Failed to mark messages as read on new message:', err);
+      });
       setTimeout(scrollToBottom, 100);
     });
 

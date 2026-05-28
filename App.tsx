@@ -12,6 +12,9 @@ enableScreens(false);
 import { supabase } from './database/supabase';
 import { getCurrentUser } from './database/auth';
 
+// Notifications
+import { registerForPushNotifications, savePushToken } from './services/notifications';
+
 // Auth Screens
 import LoginScreen from './app/screens/LoginScreen';
 import RegisterScreen from './app/screens/RegisterScreen';
@@ -121,6 +124,12 @@ export default function App() {
 
           if (!error && data) {
             setHasCompletedOnboarding(data.onboarding_completed || false);
+          }
+
+          // Register for push notifications
+          const token = await registerForPushNotifications();
+          if (token) {
+            await savePushToken(session.user.id, token);
           }
         } else {
           setIsAuthenticated(false);

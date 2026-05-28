@@ -20,6 +20,7 @@ import { getFriendLocations, updateMyLocation, subscribeFriendLocations, FriendL
 import { getCurrentUser } from '../../database/auth';
 import { databaseClient, UserEventRow } from '../../database/databaseClient';
 import EventDetailsModal from './EventDetailsModal';
+import { notifyNearbyMatch } from '../../services/notifications';
 
 // Helper function to calculate distance between two coordinates (in miles)
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -177,8 +178,9 @@ export default function MapScreen() {
   // Get current user and friend locations on mount, and subscribe to updates
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
-    let refreshTimeout: NodeJS.Timeout | null = null;
+    let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
     let currentFriendIds = new Set<string>();
+    let previousNearbyFriends = new Set<string>(); // Track who was nearby before
 
     const loadData = async () => {
       try {
@@ -192,9 +194,39 @@ export default function MapScreen() {
             const locations = await getFriendLocations(user.id);
             setFriendLocations(locations);
 
-            // Update friend IDs set for filtering (local and state)
+            // Update friend IDs set for filtering
             currentFriendIds = new Set(locations.map(loc => loc.friend.id));
             setFriendIds(currentFriendIds);
+
+            // Check for nearby friends (within 1.5 miles) and send notifications
+            if (userLocation) {
+              const currentlyNearby = new Set<string>();
+              const NEARBY_RADIUS_MILES = 1.5; // ~20-30 min walk, 7-10 min bike
+
+              for (const friendLoc of locations) {
+                const distance = calculateDistance(
+                  userLocation.latitude,
+                  userLocation.longitude,
+                  friendLoc.latitude,
+                  friendLoc.longitude
+                );
+
+                // If friend is within 1.5 miles
+                if (distance <= NEARBY_RADIUS_MILES) {
+                  currentlyNearby.add(friendLoc.friend.id);
+
+                  // If they weren't nearby before, send notification
+                  if (!previousNearbyFriends.has(friendLoc.friend.id) && friendLoc.isOnline) {
+                    notifyNearbyMatch(user.id, friendLoc.friend.name, distance).catch((err) => {
+                      console.error('Failed to send nearby notification:', err);
+                    });
+                  }
+                }
+              }
+
+              // Update the previous nearby set for next comparison
+              previousNearbyFriends = currentlyNearby;
+            }
           };
 
           await loadFriendLocations();
@@ -230,7 +262,7 @@ export default function MapScreen() {
         clearTimeout(refreshTimeout);
       }
     };
-  }, []);
+  }, [userLocation]);
 
   // Refresh friend locations when user returns to this tab
   useFocusEffect(

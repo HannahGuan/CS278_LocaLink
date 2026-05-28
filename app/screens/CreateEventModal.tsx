@@ -19,6 +19,7 @@ import DateTimePicker, {
 import { databaseClient } from '../../database/databaseClient';
 import { formatDateLabel, formatTimeLabel } from '../api/eventClient';
 import LocationPickerModal, { PickedLocation } from './LocationPickerModal';
+import { notifyFriendsAboutEvent } from '../../services/notifications';
 
 interface CreateEventModalProps {
   visible: boolean;
@@ -140,7 +141,7 @@ export default function CreateEventModal({
 
     setIsSaving(true);
     try {
-      await databaseClient.createUserEvent(currentUserId, {
+      const newEvent = await databaseClient.createUserEvent(currentUserId, {
         title: trimmedTitle,
         description: description.trim(),
         location: pickedLocation.name,
@@ -153,6 +154,26 @@ export default function CreateEventModal({
         icon: category.icon,
         isFriendOnly: isFriendOnly,
       });
+
+      // Get user's profile name for notification
+      const { data: profile } = await databaseClient.client
+        .from('profiles')
+        .select('name')
+        .eq('id', currentUserId)
+        .single();
+
+      // Notify friends about the new event (don't await - fire and forget)
+      if (profile?.name) {
+        notifyFriendsAboutEvent(
+          currentUserId,
+          profile.name,
+          trimmedTitle,
+          newEvent.id
+        ).catch((err) => {
+          console.error('Failed to send notifications:', err);
+        });
+      }
+
       resetForm();
       onCreated();
       onClose();
