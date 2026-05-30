@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import {
   useEvents,
@@ -42,11 +43,88 @@ interface FilterContext {
 }
 
 function isFriendEvent(event: Event, ctx: FilterContext): boolean {
+  // An event is a "friend event" if:
+  // 1. A friend has RSVPed to it, OR
+  // 2. A friend created it (user-created events only)
   if (ctx.friendEventIds.has(event.id)) return true;
-  // For user-created events the organizer field carries the creator's user id.
   if (isUserEventId(event.id) && ctx.friendOrganizerIds.has(event.organizer)) {
     return true;
   }
+  return false;
+}
+
+// Parse event date string (e.g., "May 17th") into a Date object for the current year
+function parseEventDate(dateLabel: string): Date | null {
+  try {
+    // Remove ordinal suffixes (st, nd, rd, th) from the date
+    const cleanedLabel = dateLabel.replace(/(\d+)(st|nd|rd|th)/, '$1');
+
+    // Parse month and day
+    const parts = cleanedLabel.split(' ');
+    if (parts.length !== 2) return null;
+
+    const monthName = parts[0];
+    const day = parseInt(parts[1], 10);
+    if (isNaN(day)) return null;
+
+    // Map month names to numbers
+    const months: { [key: string]: number } = {
+      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+      'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11,
+      'January': 0, 'February': 1, 'March': 2, 'April': 3, 'June': 5,
+      'July': 6, 'August': 7, 'September': 8, 'October': 9, 'November': 10, 'December': 11
+    };
+
+    const month = months[monthName];
+    if (month === undefined) return null;
+
+    const currentYear = new Date().getFullYear();
+    const parsed = new Date(currentYear, month, day);
+
+    if (isNaN(parsed.getTime())) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// Check if an event should be visible based on recency rules:
+// - User-created events from past 2 days + future: visible
+// - Friend events from past 2 days + future: visible
+// - Current or future events: always visible
+// - Other past events: hidden
+function shouldShowEvent(event: Event, ctx: FilterContext): boolean {
+  const now = new Date();
+  const eventDate = parseEventDate(event.date);
+
+  if (eventDate === null) {
+    return true; // Show if we can't parse the date
+  }
+
+  // Parse event time to get full datetime
+  const eventMinutes = parseEventTimeToMinutes(event.time);
+  if (eventMinutes !== null) {
+    eventDate.setHours(Math.floor(eventMinutes / 60), eventMinutes % 60, 0, 0);
+  }
+
+  // If event is in the future or happening now, always show it
+  if (eventDate >= now) return true;
+
+  // For past events, show user-created events and friend events from the past 2 days
+  const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+  if (eventDate >= twoDaysAgo) {
+    // Show user-created events from past 2 days
+    if (isUserEventId(event.id)) {
+      return true;
+    }
+    // Show friend events from past 2 days
+    if (isFriendEvent(event, ctx)) {
+      return true;
+    }
+  }
+
+  // Hide other past events
   return false;
 }
 
@@ -58,30 +136,57 @@ function filterEventsForTab(
   const now = new Date();
   const todayLabel = formatDateLabel(now);
 
+  // First, filter by recency rules
+  const recentEvents = events.filter((event) => shouldShowEvent(event, ctx));
+
+  let filtered: Event[] = [];
+
   if (tab === 'friends') {
-    return events.filter((event) => isFriendEvent(event, ctx));
-  }
-
-  if (tab === 'today') {
-    return events.filter((event) => event.date === todayLabel);
-  }
-
-  if (tab === 'week') {
+    // Show friend events AND user's own created events
+    filtered = recentEvents.filter((event) =>
+      isFriendEvent(event, ctx) || isUserEventId(event.id)
+    );
+  } else if (tab === 'today') {
+    filtered = recentEvents.filter((event) => event.date === todayLabel);
+  } else if (tab === 'week') {
     const weekLabels = new Set<string>();
     for (let offset = 0; offset < 7; offset++) {
       const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
       weekLabels.add(formatDateLabel(day));
     }
-    return events.filter((event) => weekLabels.has(event.date));
+    filtered = recentEvents.filter((event) => weekLabels.has(event.date));
+  } else {
+    // 'now': today's events that started in the last 2 hours or start in the next 30 min
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    filtered = recentEvents.filter((event) => {
+      if (event.date !== todayLabel) return false;
+      const eventMinutes = parseEventTimeToMinutes(event.time);
+      if (eventMinutes === null) return false;
+      return eventMinutes >= nowMinutes - 120 && eventMinutes <= nowMinutes + 30;
+    });
   }
 
-  // 'now': today's events that started in the last 2 hours or start in the next 30 min
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  return events.filter((event) => {
-    if (event.date !== todayLabel) return false;
-    const eventMinutes = parseEventTimeToMinutes(event.time);
-    if (eventMinutes === null) return false;
-    return eventMinutes >= nowMinutes - 120 && eventMinutes <= nowMinutes + 30;
+  // Sort events by date/time, newest first
+  return filtered.sort((a, b) => {
+    const dateA = parseEventDate(a.date);
+    const dateB = parseEventDate(b.date);
+
+    // If dates are invalid, keep original order
+    if (!dateA || !dateB) return 0;
+
+    // Add time to the dates for accurate sorting
+    const timeA = parseEventTimeToMinutes(a.time);
+    const timeB = parseEventTimeToMinutes(b.time);
+
+    if (timeA !== null) {
+      dateA.setHours(Math.floor(timeA / 60), timeA % 60, 0, 0);
+    }
+    if (timeB !== null) {
+      dateB.setHours(Math.floor(timeB / 60), timeB % 60, 0, 0);
+    }
+
+    // Sort descending (newest first)
+    return dateB.getTime() - dateA.getTime();
   });
 }
 
@@ -97,10 +202,13 @@ export default function DiscoverScreen() {
   const [friendProfiles, setFriendProfiles] = useState<Map<string, { id: string; name: string }>>(new Map());
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const refreshUserEvents = async (userId?: string) => {
     try {
+      console.log('Refreshing user events for userId:', userId || currentUserId);
       const rows = await databaseClient.getUserEvents(userId || currentUserId || undefined);
+      console.log('Loaded user events:', rows.length, 'events');
       setUserEventRows(rows);
     } catch (error) {
       console.error('Error loading user events:', error);
@@ -160,8 +268,10 @@ export default function DiscoverScreen() {
   // Auto-refresh when any user creates a new event so the feed stays live
   // without requiring a tab switch.
   useEffect(() => {
+    if (!currentUserId) return;
+
     const unsubscribe = databaseClient.subscribeUserEvents(() => {
-      refreshUserEvents();
+      refreshUserEvents(currentUserId);
     });
     return unsubscribe;
   }, [currentUserId]);
@@ -177,6 +287,23 @@ export default function DiscoverScreen() {
   );
 
   const visibleEvents = filterEventsForTab(allEvents, selectedTab, filterContext);
+
+  const handleRefresh = async () => {
+    if (!currentUserId) return;
+
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refreshUserEvents(currentUserId),
+        refreshFriendsContext(currentUserId),
+        databaseClient.getMyRsvpEventIds(currentUserId).then(setRsvpedEventIds)
+      ]);
+    } catch (error) {
+      console.error('Error refreshing:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleToggleRsvp = async (event: Event) => {
     if (pendingRsvpEventId !== null) {
@@ -312,7 +439,18 @@ export default function DiscoverScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false as boolean}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false as boolean}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#8C1515"
+            colors={['#8C1515']}
+          />
+        }
+      >
         <Text style={styles.sectionTitle}>{sectionTitle}</Text>
 
         {isLoading && (
@@ -424,7 +562,12 @@ export default function DiscoverScreen() {
         currentUserId={currentUserId}
         onClose={() => setShowCreateModal(false)}
         onCreated={() => {
-          refreshUserEvents();
+          console.log('Event created! Refreshing with userId:', currentUserId);
+          if (currentUserId) {
+            refreshUserEvents(currentUserId);
+          } else {
+            console.warn('No currentUserId available for refresh');
+          }
         }}
       />
 

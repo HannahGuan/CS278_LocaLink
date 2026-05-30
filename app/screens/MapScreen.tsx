@@ -14,7 +14,7 @@ import {
 import WebView from 'react-native-webview';
 import * as Location from 'expo-location';
 
-import { useEvents, userEventRowToEvent, isUserEventId } from '../api/eventClient';
+import { useEvents, userEventRowToEvent, isUserEventId, formatDateLabel } from '../api/eventClient';
 import { Event } from '../types';
 import { getFriendLocations, updateMyLocation, subscribeFriendLocations, FriendLocation } from '../../database/locations';
 import { getCurrentUser } from '../../database/auth';
@@ -154,10 +154,13 @@ export default function MapScreen() {
 
   // User-created events show their own markers + appear in the Nearby Events
   // list. They sit ahead of the feed events so they're easy to find.
-  const events: Event[] = [
+  // Filter to only show today's events on the map
+  const todayLabel = formatDateLabel(new Date());
+  const allEvents: Event[] = [
     ...userEventRows.map(userEventRowToEvent),
     ...feedEvents,
   ];
+  const events = allEvents.filter((event) => event.date === todayLabel);
 
   // User location state
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);

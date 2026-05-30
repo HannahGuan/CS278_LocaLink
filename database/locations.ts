@@ -120,8 +120,10 @@ export const subscribeFriendLocations = (
   // Subscribe to all location updates
   // We can't filter by friend IDs in the subscription, so we listen to all
   // and let the callback decide what to do
+  // Use unique channel name to avoid conflicts with multiple subscriptions
+  const channelName = `friend-locations-${userId}-${Date.now()}`;
   const channel = supabase
-    .channel('friend-locations')
+    .channel(channelName)
     .on(
       'postgres_changes',
       {

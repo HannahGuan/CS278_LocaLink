@@ -122,25 +122,36 @@ export default function CreateEventModal({
   };
 
   const handleCreate = async () => {
+    console.log('=== handleCreate called ===');
+    console.log('currentUserId:', currentUserId);
+    console.log('title:', title);
+    console.log('pickedLocation:', pickedLocation);
+
     if (currentUserId === null) {
+      console.log('ERROR: No currentUserId');
       Alert.alert('Not signed in', 'Please log in again to create an event.');
       return;
     }
     const trimmedTitle = title.trim();
     if (trimmedTitle.length === 0) {
+      console.log('ERROR: No title');
       Alert.alert('Missing title', 'Please give your event a name.');
       return;
     }
     if (pickedLocation === null) {
+      console.log('ERROR: No location');
       Alert.alert('Pick a location', 'Drop a pin on the map for where your event will happen.');
       return;
     }
 
+    console.log('✓ Validation passed. Creating event:', trimmedTitle);
     const startsAt = combineDateAndTime(eventDate, eventTime);
     const category = CATEGORY_OPTIONS[selectedCategoryIndex];
+    console.log('Event details - Date:', formatDateLabel(startsAt), 'Time:', formatTimeLabel(startsAt));
 
     setIsSaving(true);
     try {
+      console.log('Calling createUserEvent...');
       const newEvent = await databaseClient.createUserEvent(currentUserId, {
         title: trimmedTitle,
         description: description.trim(),
@@ -174,11 +185,14 @@ export default function CreateEventModal({
         });
       }
 
+      console.log('✓ Event created successfully! ID:', newEvent.id);
+      console.log('Calling onCreated callback...');
       resetForm();
       onCreated();
+      console.log('Calling onClose...');
       onClose();
     } catch (error) {
-      console.error('Error creating event:', error);
+      console.error('ERROR creating event:', error);
       const message =
         error instanceof Error ? error.message : 'Please try again in a moment.';
       Alert.alert('Could not create event', message);
