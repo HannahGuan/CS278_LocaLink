@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { Text, View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Text, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 
 // Disable react-native-screens optimization to fix boolean type error
 import { enableScreens } from 'react-native-screens';
@@ -126,10 +126,12 @@ export default function App() {
             setHasCompletedOnboarding(data.onboarding_completed || false);
           }
 
-          // Register for push notifications
-          const token = await registerForPushNotifications();
-          if (token) {
-            await savePushToken(session.user.id, token);
+          // Register for push notifications (native only - web uses Phase 4 PWA approach)
+          if (Platform.OS !== 'web') {
+            const token = await registerForPushNotifications();
+            if (token) {
+              await savePushToken(session.user.id, token);
+            }
           }
         } else {
           setIsAuthenticated(false);

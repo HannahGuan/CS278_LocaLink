@@ -220,14 +220,16 @@ export default function EventDetailsModal({ event, onClose }: EventDetailsModalP
                 {/* Map Preview */}
                 {event.locationCoords && (
                   <View style={styles.mapContainer}>
-                    <View style={styles.mapPreview}>
-                      <WebView
-                        source={{ html: generateMapHTML(event.locationCoords.lat, event.locationCoords.lng, event.title) }}
-                        style={styles.mapWebView}
-                        scrollEnabled={false}
-                        pointerEvents="none"
-                      />
-                    </View>
+                    {Platform.OS !== 'web' && (
+                      <View style={styles.mapPreview}>
+                        <WebView
+                          source={{ html: generateMapHTML(event.locationCoords.lat, event.locationCoords.lng, event.title) }}
+                          style={styles.mapWebView}
+                          scrollEnabled={false}
+                          pointerEvents="none"
+                        />
+                      </View>
+                    )}
                     <TouchableOpacity
                       style={styles.mapButton}
                       onPress={() => openInGoogleMaps(event.locationCoords.lat, event.locationCoords.lng, event.location)}
