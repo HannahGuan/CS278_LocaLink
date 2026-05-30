@@ -90,21 +90,35 @@ export default function MapScreen() {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Create map
-    const map = L.map(mapContainerRef.current, {
-      zoomControl: true,
-      attributionControl: false,
-    }).setView([37.4275, -122.1697], 15); // Default to Stanford
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      if (!mapContainerRef.current) return;
 
-    // Add tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
+      try {
+        console.log('Initializing Leaflet map...');
 
-    mapRef.current = map;
+        // Create map
+        const map = L.map(mapContainerRef.current, {
+          zoomControl: true,
+          attributionControl: false,
+        }).setView([37.4275, -122.1697], 15); // Default to Stanford
+
+        // Add tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors',
+        }).addTo(map);
+
+        mapRef.current = map;
+        console.log('Leaflet map initialized successfully!');
+      } catch (error) {
+        console.error('Error initializing Leaflet map:', error);
+      }
+    }, 100);
 
     // Cleanup on unmount
     return () => {
+      clearTimeout(timer);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -415,7 +429,7 @@ export default function MapScreen() {
           </View>
         ) : (
           <>
-            <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} />
+            <div ref={mapContainerRef} style={{ height: '400px', width: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
             <View style={styles.legend}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#8C1515' }]} />
