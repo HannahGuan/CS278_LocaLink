@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 
 import { useEvents, userEventRowToEvent, isUserEventId, formatDateLabel } from '../api/eventClient';
 import { Event } from '../types';
@@ -85,6 +84,23 @@ export default function MapScreen() {
     { id: 'friends' as const, label: '👥 Friends', icon: '👥' },
     { id: 'events' as const, label: '📅 Events', icon: '📅' },
   ];
+
+  // Load Leaflet CSS from CDN (works in both dev and production)
+  useEffect(() => {
+    // Check if Leaflet CSS is already loaded
+    const existingLink = document.querySelector('link[href*="leaflet.css"]');
+    if (existingLink) return;
+
+    // Create and inject CSS link
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+    link.crossOrigin = '';
+    document.head.appendChild(link);
+
+    console.log('Leaflet CSS loaded from CDN');
+  }, []);
 
   // Initialize Leaflet map
   useEffect(() => {
