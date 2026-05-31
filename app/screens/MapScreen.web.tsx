@@ -86,10 +86,18 @@ export default function MapScreen() {
   ];
 
   // Load Leaflet CSS from CDN (works in both dev and production)
+  const [cssLoaded, setCssLoaded] = useState(false);
+
   useEffect(() => {
+    console.log('[MapScreen.web] Component mounted');
+
     // Check if Leaflet CSS is already loaded
     const existingLink = document.querySelector('link[href*="leaflet.css"]');
-    if (existingLink) return;
+    if (existingLink) {
+      console.log('[MapScreen.web] Leaflet CSS already exists');
+      setCssLoaded(true);
+      return;
+    }
 
     // Create and inject CSS link
     const link = document.createElement('link');
@@ -97,27 +105,50 @@ export default function MapScreen() {
     link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
     link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
     link.crossOrigin = '';
-    document.head.appendChild(link);
 
-    console.log('Leaflet CSS loaded from CDN');
+    link.onload = () => {
+      console.log('[MapScreen.web] Leaflet CSS loaded successfully from CDN');
+      setCssLoaded(true);
+    };
+
+    link.onerror = () => {
+      console.error('[MapScreen.web] Failed to load Leaflet CSS from CDN');
+      setCssLoaded(true); // Continue anyway
+    };
+
+    document.head.appendChild(link);
   }, []);
 
-  // Initialize Leaflet map
+  // Initialize Leaflet map (only after CSS is loaded)
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    if (!cssLoaded) {
+      console.log('[MapScreen.web] Waiting for CSS to load before initializing map');
+      return;
+    }
 
-    // Small delay to ensure DOM is ready
+    if (!mapContainerRef.current || mapRef.current) {
+      console.log('[MapScreen.web] Map container or map already exists, skipping init');
+      return;
+    }
+
+    // Small delay to ensure DOM and CSS are fully ready
     const timer = setTimeout(() => {
-      if (!mapContainerRef.current) return;
+      if (!mapContainerRef.current) {
+        console.log('[MapScreen.web] Map container ref is null, cannot initialize');
+        return;
+      }
 
       try {
-        console.log('Initializing Leaflet map...');
+        console.log('[MapScreen.web] Starting Leaflet map initialization...');
+        console.log('[MapScreen.web] Container element:', mapContainerRef.current);
 
         // Create map
         const map = L.map(mapContainerRef.current, {
           zoomControl: true,
           attributionControl: false,
         }).setView([37.4275, -122.1697], 15); // Default to Stanford
+
+        console.log('[MapScreen.web] Map instance created, adding tiles...');
 
         // Add tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -126,38 +157,43 @@ export default function MapScreen() {
         }).addTo(map);
 
         mapRef.current = map;
-        console.log('Leaflet map initialized successfully!');
+        console.log('[MapScreen.web] ✓ Leaflet map initialized successfully!');
       } catch (error) {
-        console.error('Error initializing Leaflet map:', error);
+        console.error('[MapScreen.web] ✗ Error initializing Leaflet map:', error);
       }
-    }, 100);
+    }, 200); // Increased delay to ensure CSS is applied
 
     // Cleanup on unmount
     return () => {
       clearTimeout(timer);
       if (mapRef.current) {
+        console.log('[MapScreen.web] Cleaning up map on unmount');
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [cssLoaded]);
 
   // Get browser location and watch for updates
   useEffect(() => {
+    console.log('[MapScreen.web] Setting up geolocation...');
+
     if (!('geolocation' in navigator)) {
-      console.log('Geolocation not supported');
+      console.log('[MapScreen.web] Geolocation not supported, using Stanford default');
       setUserLocation({ latitude: 37.4275, longitude: -122.1697 });
       setLocationLoading(false);
       return;
     }
 
     // Get initial position
+    console.log('[MapScreen.web] Requesting geolocation permission...');
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const newLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         };
+        console.log('[MapScreen.web] ✓ Got user location:', newLocation);
         setUserLocation(newLocation);
         setLocationLoading(false);
 
@@ -177,8 +213,9 @@ export default function MapScreen() {
         }
       },
       (error) => {
-        console.log('Geolocation error:', error.message);
+        console.log('[MapScreen.web] Geolocation error:', error.message);
         // Default to Stanford campus
+        console.log('[MapScreen.web] Using Stanford default location');
         setUserLocation({ latitude: 37.4275, longitude: -122.1697 });
         setLocationLoading(false);
       },
@@ -405,6 +442,15 @@ export default function MapScreen() {
     });
     return unsubscribe;
   }, [currentUserId]);
+
+  // Debug logging
+  console.log('[MapScreen.web] Render - States:', {
+    locationLoading,
+    userLocation,
+    friendsLoading,
+    cssLoaded,
+    showingMap: !locationLoading && userLocation && !friendsLoading,
+  });
 
   return (
     <SafeAreaView style={styles.container}>
