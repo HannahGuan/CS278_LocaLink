@@ -114,17 +114,29 @@ export default function MapScreen() {
     document.head.appendChild(link);
   }, []);
 
-  // Initialize Leaflet map
+  // Initialize Leaflet map - run after loading completes
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) {
-      console.log('[MapScreen.web] Skipping init - container or map exists');
+    // Only initialize after location loading is done
+    if (locationLoading || !userLocation || friendsLoading) {
+      console.log('[MapScreen.web] Waiting for data to load before initializing map');
+      return;
+    }
+
+    if (mapRef.current) {
+      console.log('[MapScreen.web] Map already initialized, skipping');
+      return;
+    }
+
+    if (!mapContainerRef.current) {
+      console.error('[MapScreen.web] Container ref is null, cannot initialize');
       return;
     }
 
     // Delay to ensure DOM and CSS are ready
+    console.log('[MapScreen.web] Starting map initialization...');
     const timer = setTimeout(() => {
       if (!mapContainerRef.current) {
-        console.error('[MapScreen.web] ✗ Container ref is null');
+        console.error('[MapScreen.web] ✗ Container ref became null');
         return;
       }
 
@@ -139,7 +151,7 @@ export default function MapScreen() {
         const map = L.map(mapContainerRef.current, {
           zoomControl: true,
           attributionControl: false,
-        }).setView([37.4275, -122.1697], 15);
+        }).setView([userLocation.latitude, userLocation.longitude], 15);
 
         // Add tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -154,20 +166,21 @@ export default function MapScreen() {
         }, 100);
 
         mapRef.current = map;
-        console.log('[MapScreen.web] ✓ Map initialized!');
+        console.log('[MapScreen.web] ✓ Map initialized successfully!');
       } catch (error) {
         console.error('[MapScreen.web] ✗ Init error:', error);
       }
-    }, 300);
+    }, 500);
 
     return () => {
       clearTimeout(timer);
       if (mapRef.current) {
+        console.log('[MapScreen.web] Cleaning up map');
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [locationLoading, userLocation, friendsLoading]);
 
   // Get browser location and watch for updates
   useEffect(() => {
