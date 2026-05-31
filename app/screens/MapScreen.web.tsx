@@ -268,13 +268,27 @@ export default function MapScreen() {
 
   // Update markers when data changes
   useEffect(() => {
-    if (!mapRef.current || !userLocation) return;
+    console.log('[MapScreen.web] Markers update triggered', {
+      hasMap: !!mapRef.current,
+      hasUserLocation: !!userLocation,
+      userLocation: userLocation,
+      friendCount: friendLocations.length,
+      eventCount: events.length,
+      filter: selectedFilter,
+    });
+
+    if (!mapRef.current || !userLocation) {
+      console.log('[MapScreen.web] Skipping markers - no map or user location');
+      return;
+    }
 
     // Clear old markers
+    console.log('[MapScreen.web] Clearing', markersRef.current.length, 'old markers');
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
     // Add user location marker
+    console.log('[MapScreen.web] Adding user marker at', userLocation);
     const userMarker = L.marker([userLocation.latitude, userLocation.longitude], {
       icon: L.divIcon({
         className: 'custom-marker',
@@ -285,9 +299,11 @@ export default function MapScreen() {
       .addTo(mapRef.current)
       .bindPopup('<b>You</b><br>Your current location');
     markersRef.current.push(userMarker);
+    console.log('[MapScreen.web] ✓ User marker added');
 
     // Add friend markers
     if (selectedFilter === 'all' || selectedFilter === 'friends') {
+      console.log('[MapScreen.web] Adding', friendLocations.length, 'friend markers');
       friendLocations.forEach((friendLoc) => {
         const color = friendLoc.isOnline ? '#10B981' : '#6B7280';
         const status = friendLoc.isOnline ? 'Online' : 'Last seen';
@@ -304,11 +320,14 @@ export default function MapScreen() {
           .bindPopup(`<b>${friendLoc.friend.name}</b><br>${status}: ${timeAgo}`);
         markersRef.current.push(friendMarker);
       });
+      console.log('[MapScreen.web] ✓ Friend markers added');
     }
 
     // Add event markers
     if (selectedFilter === 'all' || selectedFilter === 'events') {
-      events.slice(0, 20).forEach((event) => {
+      const eventsToShow = events.slice(0, 20);
+      console.log('[MapScreen.web] Adding', eventsToShow.length, 'event markers');
+      eventsToShow.forEach((event) => {
         const color = isUserEventId(event.id) ? '#F59E0B' : '#7C3AED';
 
         const eventMarker = L.marker([event.locationCoords.lat, event.locationCoords.lng], {
@@ -322,7 +341,10 @@ export default function MapScreen() {
           .bindPopup(`<b>${event.title}</b><br>${event.location}`);
         markersRef.current.push(eventMarker);
       });
+      console.log('[MapScreen.web] ✓ Event markers added');
     }
+
+    console.log('[MapScreen.web] ✓ Total markers on map:', markersRef.current.length);
   }, [userLocation, friendLocations, events, selectedFilter]);
 
   // Get current user and friend locations on mount, and subscribe to updates
