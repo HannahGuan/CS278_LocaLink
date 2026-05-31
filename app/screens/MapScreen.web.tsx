@@ -86,16 +86,13 @@ export default function MapScreen() {
   ];
 
   // Load Leaflet CSS from CDN (works in both dev and production)
-  const [cssLoaded, setCssLoaded] = useState(false);
-
   useEffect(() => {
-    console.log('[MapScreen.web] Component mounted');
+    console.log('[MapScreen.web] Component mounted, loading CSS');
 
     // Check if Leaflet CSS is already loaded
     const existingLink = document.querySelector('link[href*="leaflet.css"]');
     if (existingLink) {
       console.log('[MapScreen.web] Leaflet CSS already exists');
-      setCssLoaded(true);
       return;
     }
 
@@ -107,48 +104,38 @@ export default function MapScreen() {
     link.crossOrigin = '';
 
     link.onload = () => {
-      console.log('[MapScreen.web] Leaflet CSS loaded successfully from CDN');
-      setCssLoaded(true);
+      console.log('[MapScreen.web] ✓ Leaflet CSS loaded from CDN');
     };
 
     link.onerror = () => {
-      console.error('[MapScreen.web] Failed to load Leaflet CSS from CDN');
-      setCssLoaded(true); // Continue anyway
+      console.error('[MapScreen.web] ✗ Failed to load Leaflet CSS');
     };
 
     document.head.appendChild(link);
   }, []);
 
-  // Initialize Leaflet map (only after CSS is loaded)
+  // Initialize Leaflet map
   useEffect(() => {
-    if (!cssLoaded) {
-      console.log('[MapScreen.web] Waiting for CSS to load before initializing map');
-      return;
-    }
-
     if (!mapContainerRef.current || mapRef.current) {
-      console.log('[MapScreen.web] Map container or map already exists, skipping init');
+      console.log('[MapScreen.web] Skipping init - container or map exists');
       return;
     }
 
-    // Small delay to ensure DOM and CSS are fully ready
+    // Delay to ensure DOM and CSS are ready
     const timer = setTimeout(() => {
       if (!mapContainerRef.current) {
-        console.log('[MapScreen.web] Map container ref is null, cannot initialize');
+        console.error('[MapScreen.web] ✗ Container ref is null');
         return;
       }
 
       try {
-        console.log('[MapScreen.web] Starting Leaflet map initialization...');
-        console.log('[MapScreen.web] Container element:', mapContainerRef.current);
+        console.log('[MapScreen.web] Initializing Leaflet map...');
 
         // Create map
         const map = L.map(mapContainerRef.current, {
           zoomControl: true,
           attributionControl: false,
-        }).setView([37.4275, -122.1697], 15); // Default to Stanford
-
-        console.log('[MapScreen.web] Map instance created, adding tiles...');
+        }).setView([37.4275, -122.1697], 15);
 
         // Add tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -157,22 +144,20 @@ export default function MapScreen() {
         }).addTo(map);
 
         mapRef.current = map;
-        console.log('[MapScreen.web] ✓ Leaflet map initialized successfully!');
+        console.log('[MapScreen.web] ✓ Map initialized!');
       } catch (error) {
-        console.error('[MapScreen.web] ✗ Error initializing Leaflet map:', error);
+        console.error('[MapScreen.web] ✗ Init error:', error);
       }
-    }, 200); // Increased delay to ensure CSS is applied
+    }, 300);
 
-    // Cleanup on unmount
     return () => {
       clearTimeout(timer);
       if (mapRef.current) {
-        console.log('[MapScreen.web] Cleaning up map on unmount');
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, [cssLoaded]);
+  }, []);
 
   // Get browser location and watch for updates
   useEffect(() => {
@@ -446,9 +431,8 @@ export default function MapScreen() {
   // Debug logging
   console.log('[MapScreen.web] Render - States:', {
     locationLoading,
-    userLocation,
+    userLocation: userLocation ? `${userLocation.latitude}, ${userLocation.longitude}` : null,
     friendsLoading,
-    cssLoaded,
     showingMap: !locationLoading && userLocation && !friendsLoading,
   });
 
