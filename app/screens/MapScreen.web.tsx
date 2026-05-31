@@ -60,6 +60,7 @@ export default function MapScreen() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const watchIdRef = useRef<number | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   // Filter to only show today's events on the map
   const todayLabel = formatDateLabel(new Date());
@@ -159,14 +160,17 @@ export default function MapScreen() {
           attribution: '© OpenStreetMap contributors',
         }).addTo(map);
 
+        mapRef.current = map;
+        console.log('[MapScreen.web] ✓ Map initialized successfully!');
+
         // Force Leaflet to recalculate map size (important for proper tile rendering)
         setTimeout(() => {
           map.invalidateSize();
           console.log('[MapScreen.web] ✓ Map size invalidated');
-        }, 100);
-
-        mapRef.current = map;
-        console.log('[MapScreen.web] ✓ Map initialized successfully!');
+          // Signal that map is fully ready for markers
+          setMapReady(true);
+          console.log('[MapScreen.web] ✓ Map is ready for markers');
+        }, 200);
       } catch (error) {
         console.error('[MapScreen.web] ✗ Init error:', error);
       }
@@ -178,6 +182,7 @@ export default function MapScreen() {
         console.log('[MapScreen.web] Cleaning up map');
         mapRef.current.remove();
         mapRef.current = null;
+        setMapReady(false);
       }
     };
   }, [locationLoading, userLocation, friendsLoading]);
@@ -269,6 +274,7 @@ export default function MapScreen() {
   // Update markers when data changes
   useEffect(() => {
     console.log('[MapScreen.web] Markers update triggered', {
+      mapReady,
       hasMap: !!mapRef.current,
       hasUserLocation: !!userLocation,
       userLocation: userLocation,
@@ -277,8 +283,8 @@ export default function MapScreen() {
       filter: selectedFilter,
     });
 
-    if (!mapRef.current || !userLocation) {
-      console.log('[MapScreen.web] Skipping markers - no map or user location');
+    if (!mapReady || !mapRef.current || !userLocation) {
+      console.log('[MapScreen.web] Skipping markers - map not ready, no map instance, or no user location');
       return;
     }
 
@@ -345,7 +351,7 @@ export default function MapScreen() {
     }
 
     console.log('[MapScreen.web] ✓ Total markers on map:', markersRef.current.length);
-  }, [userLocation, friendLocations, events, selectedFilter]);
+  }, [mapReady, userLocation, friendLocations, events, selectedFilter]);
 
   // Get current user and friend locations on mount, and subscribe to updates
   useEffect(() => {
