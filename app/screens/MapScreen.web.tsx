@@ -130,6 +130,10 @@ export default function MapScreen() {
 
       try {
         console.log('[MapScreen.web] Initializing Leaflet map...');
+        console.log('[MapScreen.web] Container dimensions:', {
+          width: mapContainerRef.current.offsetWidth,
+          height: mapContainerRef.current.offsetHeight,
+        });
 
         // Create map
         const map = L.map(mapContainerRef.current, {
@@ -142,6 +146,12 @@ export default function MapScreen() {
           maxZoom: 19,
           attribution: '© OpenStreetMap contributors',
         }).addTo(map);
+
+        // Force Leaflet to recalculate map size (important for proper tile rendering)
+        setTimeout(() => {
+          map.invalidateSize();
+          console.log('[MapScreen.web] ✓ Map size invalidated');
+        }, 100);
 
         mapRef.current = map;
         console.log('[MapScreen.web] ✓ Map initialized!');
@@ -475,7 +485,7 @@ export default function MapScreen() {
           </View>
         ) : (
           <>
-            <div ref={mapContainerRef} style={{ height: '400px', width: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+            <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} />
             <View style={styles.legend}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#8C1515' }]} />
