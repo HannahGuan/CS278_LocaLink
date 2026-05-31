@@ -719,6 +719,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 10,
     padding: 10,
+    zIndex: 1000, // Ensure it appears above Leaflet map layers
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   legendItem: {
     flexDirection: 'row',
