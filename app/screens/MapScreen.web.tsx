@@ -198,6 +198,16 @@ export default function MapScreen() {
       return;
     }
 
+    // Track last location to prevent excessive updates
+    let lastLocation: { latitude: number; longitude: number } | null = null;
+
+    // Helper to check if location changed significantly (>10 meters)
+    const hasLocationChanged = (newLat: number, newLng: number): boolean => {
+      if (!lastLocation) return true;
+      const distance = calculateDistance(lastLocation.latitude, lastLocation.longitude, newLat, newLng);
+      return distance > 0.006; // ~10 meters in miles
+    };
+
     // Get initial position
     console.log('[MapScreen.web] Requesting geolocation permission...');
     navigator.geolocation.getCurrentPosition(
@@ -207,6 +217,7 @@ export default function MapScreen() {
           longitude: position.coords.longitude,
         };
         console.log('[MapScreen.web] ✓ Got user location:', newLocation);
+        lastLocation = newLocation;
         setUserLocation(newLocation);
         setLocationLoading(false);
 
@@ -235,29 +246,37 @@ export default function MapScreen() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
-    // Watch position for continuous updates
+    // Watch position for continuous updates (throttled)
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        const newLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
-        setUserLocation(newLocation);
+        const newLat = position.coords.latitude;
+        const newLng = position.coords.longitude;
 
-        // Update location to database
-        if (currentUserId) {
-          updateMyLocation(
-            currentUserId,
-            newLocation.latitude,
-            newLocation.longitude,
-            position.coords.accuracy || undefined
-          );
+        // Only update state if moved significantly (prevents constant re-renders)
+        if (hasLocationChanged(newLat, newLng)) {
+          const newLocation = {
+            latitude: newLat,
+            longitude: newLng,
+          };
+          console.log('[MapScreen.web] Location changed significantly, updating');
+          lastLocation = newLocation;
+          setUserLocation(newLocation);
+
+          // Update location to database
+          if (currentUserId) {
+            updateMyLocation(
+              currentUserId,
+              newLocation.latitude,
+              newLocation.longitude,
+              position.coords.accuracy || undefined
+            );
+          }
         }
       },
       (error) => {
         console.log('Watch position error:', error.message);
       },
-      { enableHighAccuracy: true, maximumAge: 30000, timeout: 27000 }
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 27000 } // Reduced accuracy and longer cache for battery
     );
 
     watchIdRef.current = watchId;
