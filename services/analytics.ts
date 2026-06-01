@@ -92,6 +92,32 @@ export const analytics = {
     });
   },
 
+  // Chat/Messages
+  chatOpened: (friendId: string, source: 'friends_list' | 'nearby' | 'messages_list') => {
+    trackEvent('chat_opened', {
+      friend_id: friendId,
+      source,
+    });
+  },
+
+  // Profile/Settings
+  privacySettingChanged: (setting: 'showToFriends' | 'showToMatches', newValue: boolean) => {
+    trackEvent('privacy_setting_changed', {
+      setting,
+      new_value: newValue,
+    });
+  },
+
+  profileUpdated: (field: 'bio' | 'interests' | 'info') => {
+    trackEvent('profile_updated', {
+      field,
+    });
+  },
+
+  userSignedOut: () => {
+    trackEvent('user_signed_out');
+  },
+
   // Onboarding
   onboardingStarted: () => {
     trackEvent('onboarding_started');

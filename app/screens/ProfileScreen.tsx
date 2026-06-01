@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../database/supabase';
 import { getCurrentUser, signOut } from '../../database/auth';
+import { analytics } from '../../services/analytics';
 
 interface UserProfile {
   id: string;
@@ -108,6 +109,11 @@ export default function ProfileScreen({ navigation }: any) {
       return;
     }
 
+    // Track privacy setting change
+    if (key === 'showToFriends' || key === 'showToMatches') {
+      analytics.privacySettingChanged(key, value);
+    }
+
     // Keep local state in sync — otherwise the next toggle spreads stale
     // settings and silently overwrites this one.
     setProfile({ ...profile, privacy_settings: newSettings });
@@ -130,6 +136,7 @@ export default function ProfileScreen({ navigation }: any) {
       console.error('Error updating bio:', error);
       Alert.alert('Error', 'Failed to update bio');
     } else {
+      analytics.profileUpdated('bio');
       setProfile({ ...profile, bio: editedBio.trim() });
       setIsEditingBio(false);
       Alert.alert('Success', 'Bio updated successfully');
@@ -162,6 +169,7 @@ export default function ProfileScreen({ navigation }: any) {
       console.error('Error updating info:', error);
       Alert.alert('Error', 'Failed to update information');
     } else {
+      analytics.profileUpdated('info');
       setProfile({
         ...profile,
         year: editedYear.trim(),
@@ -189,6 +197,7 @@ export default function ProfileScreen({ navigation }: any) {
       console.error('Error updating interests:', error);
       Alert.alert('Error', 'Failed to update interests');
     } else {
+      analytics.profileUpdated('interests');
       setProfile({ ...profile, interests: editedInterests });
       setIsEditingInterests(false);
       Alert.alert('Success', 'Interests updated successfully');
@@ -205,6 +214,7 @@ export default function ProfileScreen({ navigation }: any) {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            analytics.userSignedOut();
             const result = await signOut();
             if (result.success) {
               // Navigation will be handled by App.tsx auth state listener

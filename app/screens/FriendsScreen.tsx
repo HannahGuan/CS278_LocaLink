@@ -27,7 +27,7 @@ import {
 } from '../../database/friendRequests';
 import { getFriends } from '../../database/friends';
 import { FriendWithDetails } from '../../types';
-import { Profile } from '../types';
+import { Profile } from '../../types';
 import ChatDetailScreen from './ChatDetailScreen';
 import {
   getUnreadCountsByFriend,
@@ -36,6 +36,7 @@ import {
   Conversation,
 } from '../../database/messages';
 import { useUnread } from '../contexts/UnreadContext';
+import { analytics } from '../../services/analytics';
 
 type TabType = 'friends' | 'nearby' | 'messages';
 
@@ -242,6 +243,7 @@ export default function FriendsScreen() {
     try {
       if (action === 'accept') {
         await databaseClient.acceptFriendRequest(request.id);
+        analytics.friendRequestAccepted(request.sender.id);
       } else {
         await databaseClient.declineFriendRequest(request.id);
       }
@@ -320,7 +322,10 @@ export default function FriendsScreen() {
     try {
       const outcome = await addFriendByProfile(currentUserId, recipient);
       announceOutcome(outcome);
-      if (outcome.kind === 'sent' || outcome.kind === 'request_pending') {
+      if (outcome.kind === 'sent') {
+        analytics.friendRequestSent(recipient.id);
+        await refreshPending(currentUserId);
+      } else if (outcome.kind === 'request_pending') {
         await refreshPending(currentUserId);
       }
       if (outcome.kind === 'already_friends') {
@@ -358,6 +363,7 @@ export default function FriendsScreen() {
       const outcome = await addFriendByEmail(currentUserId, searchQuery);
       announceOutcome(outcome);
       if (outcome.kind === 'sent') {
+        analytics.friendRequestSent(outcome.recipient.id);
         setSearchQuery('');
         await refreshPending(currentUserId);
       }
@@ -396,7 +402,12 @@ export default function FriendsScreen() {
           {tabs.map((tab) => (
             <TouchableOpacity
               key={tab.id}
-              onPress={() => setSelectedTab(tab.id)}
+              onPress={() => {
+                if (selectedTab !== tab.id) {
+                  analytics.filterChanged(selectedTab, tab.id);
+                  setSelectedTab(tab.id);
+                }
+              }}
               style={[styles.tab, selectedTab === tab.id && styles.tabActive]}
             >
               <Text style={styles.tabIcon}>{tab.icon}</Text>
@@ -467,6 +478,7 @@ export default function FriendsScreen() {
                     <TouchableOpacity
                       style={styles.messageIconButton}
                       onPress={() => {
+                        analytics.chatOpened(friend.friend.id, 'friends_list');
                         setChatFriend(friend.friend);
                         // Refresh unread counts after opening chat
                         if (currentUserId) {
@@ -579,7 +591,10 @@ export default function FriendsScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.waveButton}
-                          onPress={() => setChatFriend(profile)}
+                          onPress={() => {
+                            analytics.chatOpened(profile.id, 'nearby');
+                            setChatFriend(profile);
+                          }}
                         >
                           <Text style={styles.waveButtonText}>💬 Message</Text>
                         </TouchableOpacity>
@@ -610,7 +625,10 @@ export default function FriendsScreen() {
                 <TouchableOpacity
                   key={conversation.friend.id}
                   style={styles.conversationCard}
-                  onPress={() => setChatFriend(conversation.friend)}
+                  onPress={() => {
+                    analytics.chatOpened(conversation.friend.id, 'messages_list');
+                    setChatFriend(conversation.friend);
+                  }}
                 >
                   {conversation.friend.avatar_url ? (
                     <Image

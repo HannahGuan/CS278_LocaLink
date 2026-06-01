@@ -29,7 +29,7 @@ export interface Friend {
 }
 
 export interface FriendWithDetails extends Friend {
-  friend: User;
+  friend: Profile;
   location?: Location;
 }
 
@@ -37,4 +37,12 @@ export interface FriendWithDetails extends Friend {
 export interface Profile extends User {
   bio?: string;
   phone?: string;
+  year?: string;
+  major?: string;
+  interests?: string[];
+  social_style?: {
+    introvert_extrovert: number;
+    spontaneous_planned: number;
+  };
+  onboarding_completed?: boolean;
 }
