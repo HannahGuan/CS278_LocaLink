@@ -151,6 +151,7 @@ function rawToEvent(raw: RawRssItem, index: number): Event {
     category,
     icon,
     imageUrl: raw.imageUrl,
+    website: raw.link.length > 0 ? raw.link : undefined,
   };
 }
 
@@ -239,6 +240,7 @@ export function userEventRowToEvent(row: UserEventRow): Event {
     category: row.category,
     icon: row.icon,
     imageUrl: row.image_url ?? undefined,
+    website: undefined, // User events don't have website links (for now)
   };
 }
 

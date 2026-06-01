@@ -255,6 +255,21 @@ export default function EventDetailsModal({ event, onClose }: EventDetailsModalP
                     <Text style={styles.modalDescription}>
                       {event.description}
                     </Text>
+                    {event.website && (
+                      <TouchableOpacity
+                        style={styles.websiteButton}
+                        onPress={() => {
+                          if (Platform.OS === 'web') {
+                            window.open(event.website, '_blank');
+                          } else {
+                            Linking.openURL(event.website!);
+                          }
+                        }}
+                      >
+                        <Text style={styles.websiteButtonIcon}>🔗</Text>
+                        <Text style={styles.websiteButtonText}>View Event Website</Text>
+                      </TouchableOpacity>
+                    )}
                   </>
                 )}
 
@@ -506,5 +521,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  websiteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4E8E9',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    gap: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#8C1515',
+  },
+  websiteButtonIcon: {
+    fontSize: 18,
+  },
+  websiteButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8C1515',
   },
 });

@@ -23,6 +23,7 @@ import { databaseClient, UserEventRow } from '../../database/databaseClient';
 import { getFriends } from '../../database/friends';
 import CreateEventModal from './CreateEventModal';
 import EventDetailsModal from './EventDetailsModal';
+import { analytics } from '../../services/analytics';
 
 type DiscoverTab = 'now' | 'today' | 'week' | 'friends';
 
@@ -335,6 +336,7 @@ export default function DiscoverScreen() {
     try {
       if (isGoing) {
         await databaseClient.deleteEventRsvp(userId, event.id);
+        analytics.eventRSVPed(event.id, false);
       } else {
         await databaseClient.createEventRsvp(
           userId,
@@ -343,6 +345,7 @@ export default function DiscoverScreen() {
           event.date,
           event.location
         );
+        analytics.eventRSVPed(event.id, true);
       }
     } catch (error) {
       console.error('Error toggling RSVP:', error);
@@ -423,7 +426,10 @@ export default function DiscoverScreen() {
           {tabs.map((tab) => (
             <TouchableOpacity
               key={tab.id}
-              onPress={() => setSelectedTab(tab.id)}
+              onPress={() => {
+                setSelectedTab(tab.id);
+                analytics.filterChanged(selectedTab, tab.id);
+              }}
               style={[styles.tab, selectedTab === tab.id && styles.tabActive]}
             >
               <Text
@@ -521,7 +527,10 @@ export default function DiscoverScreen() {
                 <View style={styles.eventActions}>
                   <TouchableOpacity
                     style={styles.detailsButton}
-                    onPress={() => setSelectedEvent(event)}
+                    onPress={() => {
+                      setSelectedEvent(event);
+                      analytics.eventViewed(event.id, 'feed');
+                    }}
                   >
                     <Text style={styles.detailsButtonText}>Details</Text>
                   </TouchableOpacity>

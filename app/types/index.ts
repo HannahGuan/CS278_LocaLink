@@ -23,6 +23,7 @@ export interface Event {
   category: string;
   icon: string;
   imageUrl?: string;
+  website?: string; // Original event URL (from Stanford RSS or user input)
 }
 
 export interface Message {
