@@ -15,6 +15,9 @@ import { getCurrentUser } from './database/auth';
 // Notifications
 import { registerForPushNotifications, savePushToken } from './services/notifications';
 
+// Analytics
+import { initializeAnalytics, identifyUser, resetUser, analytics } from './services/analytics';
+
 // Auth Screens
 import LoginScreen from './app/screens/LoginScreen';
 import RegisterScreen from './app/screens/RegisterScreen';
@@ -105,6 +108,12 @@ export default function App() {
   const [showRegister, setShowRegister] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
 
+  // Initialize analytics on app start
+  useEffect(() => {
+    initializeAnalytics();
+    analytics.appOpened();
+  }, []);
+
   // Check if user is already logged in on app start
   useEffect(() => {
     checkUser();
@@ -115,6 +124,12 @@ export default function App() {
         console.log('Auth state changed:', event);
         if (session?.user) {
           setIsAuthenticated(true);
+
+          // Identify user in analytics
+          identifyUser(session.user.id, {
+            email: session.user.email,
+          });
+
           // Check if user has completed onboarding
           const { data, error } = await supabase
             .from('profiles')
@@ -136,6 +151,9 @@ export default function App() {
         } else {
           setIsAuthenticated(false);
           setHasCompletedOnboarding(false);
+
+          // Reset analytics on logout
+          resetUser();
         }
       }
     );

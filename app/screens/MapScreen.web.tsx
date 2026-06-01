@@ -18,6 +18,7 @@ import { getFriendLocations, updateMyLocation, subscribeFriendLocations, FriendL
 import { getCurrentUser } from '../../database/auth';
 import { databaseClient, UserEventRow } from '../../database/databaseClient';
 import EventDetailsModal from './EventDetailsModal';
+import { analytics } from '../../services/analytics';
 
 // Helper function to calculate distance between two coordinates (in miles)
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -54,6 +55,11 @@ export default function MapScreen() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const { events: feedEvents } = useEvents();
   const [userEventRows, setUserEventRows] = useState<UserEventRow[]>([]);
+
+  // Track map view on component mount
+  useEffect(() => {
+    analytics.mapViewed(selectedFilter, 'granted'); // We'll update permission status dynamically
+  }, []);
 
   // Map refs
   const mapRef = useRef<L.Map | null>(null);
@@ -259,8 +265,20 @@ export default function MapScreen() {
             longitude: newLng,
           };
           console.log('[MapScreen.web] Location changed significantly, updating');
+
+          // Calculate distance moved
+          const distanceMoved = lastLocation ? calculateDistance(
+            lastLocation.latitude,
+            lastLocation.longitude,
+            newLat,
+            newLng
+          ) : undefined;
+
           lastLocation = newLocation;
           setUserLocation(newLocation);
+
+          // Track location update
+          analytics.locationUpdated(position.coords.accuracy, distanceMoved);
 
           // Update location to database
           if (currentUserId) {
@@ -518,7 +536,11 @@ export default function MapScreen() {
           {filters.map((filter) => (
             <TouchableOpacity
               key={filter.id}
-              onPress={() => setSelectedFilter(filter.id)}
+              onPress={() => {
+                const previousFilter = selectedFilter;
+                setSelectedFilter(filter.id);
+                analytics.filterChanged(previousFilter, filter.id);
+              }}
               style={[
                 styles.filterButton,
                 selectedFilter === filter.id && styles.filterButtonActive,
@@ -643,7 +665,10 @@ export default function MapScreen() {
                 </View>
                 <View style={styles.eventActions}>
                   <Text style={styles.eventTime}>{event.time}</Text>
-                  <TouchableOpacity onPress={() => setSelectedEvent(event)}>
+                  <TouchableOpacity onPress={() => {
+                    setSelectedEvent(event);
+                    analytics.eventViewed(event.id, 'map');
+                  }}>
                     <Text style={styles.detailsButton}>Details</Text>
                   </TouchableOpacity>
                 </View>
