@@ -1,86 +1,35 @@
-import posthog from 'posthog-js';
+import { supabase } from '../database/supabase';
 import { Platform } from 'react-native';
 
-const POSTHOG_API_KEY = process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '';
-const POSTHOG_HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
-
-// Initialize PostHog
-let isInitialized = false;
-
-export const initializeAnalytics = () => {
-  if (isInitialized || !POSTHOG_API_KEY) {
-    return;
-  }
-
+// Track custom events to Supabase
+export const trackEvent = async (eventName: string, properties?: Record<string, any>) => {
   try {
-    posthog.init(POSTHOG_API_KEY, {
-      api_host: POSTHOG_HOST,
-      autocapture: false, // Disable autocapture for more control
-      capture_pageview: false, // We'll manually track screen views
-      loaded: (posthog) => {
-        console.log('[Analytics] PostHog initialized');
-        isInitialized = true;
-      },
-    });
-  } catch (error) {
-    console.error('[Analytics] Failed to initialize PostHog:', error);
-  }
-};
+    const { data: { user } } = await supabase.auth.getUser();
 
-// Track custom events
-export const trackEvent = (eventName: string, properties?: Record<string, any>) => {
-  if (!isInitialized) {
-    console.warn('[Analytics] PostHog not initialized, skipping event:', eventName);
-    return;
-  }
-
-  try {
-    posthog.capture(eventName, {
-      ...properties,
+    await supabase.from('analytics_events').insert({
+      user_id: user?.id || null,
+      event_name: eventName,
+      properties: properties || {},
       platform: Platform.OS,
-      timestamp: new Date().toISOString(),
     });
+
+    console.log('[Analytics] Event tracked:', eventName, properties);
   } catch (error) {
     console.error('[Analytics] Failed to track event:', eventName, error);
   }
 };
 
-// Track screen views
-export const trackScreenView = (screenName: string, properties?: Record<string, any>) => {
-  trackEvent('screen_viewed', {
-    screen_name: screenName,
-    ...properties,
-  });
-};
-
-// Identify user (call after login)
-export const identifyUser = (userId: string, properties?: Record<string, any>) => {
-  if (!isInitialized) {
-    return;
-  }
-
-  try {
-    posthog.identify(userId, properties);
-  } catch (error) {
-    console.error('[Analytics] Failed to identify user:', error);
-  }
-};
-
-// Reset user (call on logout)
-export const resetUser = () => {
-  if (!isInitialized) {
-    return;
-  }
-
-  try {
-    posthog.reset();
-  } catch (error) {
-    console.error('[Analytics] Failed to reset user:', error);
-  }
-};
-
 // Convenience functions for common events
 export const analytics = {
+  // App lifecycle
+  appOpened: () => {
+    trackEvent('app_opened');
+  },
+
+  appBackgrounded: () => {
+    trackEvent('app_backgrounded');
+  },
+
   // Map interactions
   mapViewed: (filter: 'all' | 'friends' | 'events', locationPermission: 'granted' | 'denied' | 'prompt') => {
     trackEvent('map_viewed', {
@@ -141,15 +90,6 @@ export const analytics = {
     trackEvent('friend_request_accepted', {
       from_user_id: fromUserId,
     });
-  },
-
-  // App lifecycle
-  appOpened: () => {
-    trackEvent('app_opened');
-  },
-
-  appBackgrounded: () => {
-    trackEvent('app_backgrounded');
   },
 
   // Onboarding

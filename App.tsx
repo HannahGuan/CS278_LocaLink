@@ -16,7 +16,7 @@ import { getCurrentUser } from './database/auth';
 import { registerForPushNotifications, savePushToken } from './services/notifications';
 
 // Analytics
-import { initializeAnalytics, identifyUser, resetUser, analytics } from './services/analytics';
+import { analytics } from './services/analytics';
 
 // Auth Screens
 import LoginScreen from './app/screens/LoginScreen';
@@ -108,9 +108,8 @@ export default function App() {
   const [showRegister, setShowRegister] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
 
-  // Initialize analytics on app start
+  // Track app opened on start
   useEffect(() => {
-    initializeAnalytics();
     analytics.appOpened();
   }, []);
 
@@ -124,11 +123,6 @@ export default function App() {
         console.log('Auth state changed:', event);
         if (session?.user) {
           setIsAuthenticated(true);
-
-          // Identify user in analytics
-          identifyUser(session.user.id, {
-            email: session.user.email,
-          });
 
           // Check if user has completed onboarding
           const { data, error } = await supabase
@@ -151,9 +145,6 @@ export default function App() {
         } else {
           setIsAuthenticated(false);
           setHasCompletedOnboarding(false);
-
-          // Reset analytics on logout
-          resetUser();
         }
       }
     );
