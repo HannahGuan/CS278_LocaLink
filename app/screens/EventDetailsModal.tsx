@@ -67,6 +67,14 @@ function generateMapHTML(lat: number, lng: number, title: string): string {
 }
 
 function openInGoogleMaps(lat: number, lng: number, label: string) {
+  // For web, directly open Google Maps in browser
+  if (Platform.OS === 'web') {
+    const webUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    window.open(webUrl, '_blank');
+    return;
+  }
+
+  // For native apps, use native maps
   const scheme = Platform.select({
     ios: 'maps:0,0?q=',
     android: 'geo:0,0?q='
