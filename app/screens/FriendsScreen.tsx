@@ -250,6 +250,7 @@ export default function FriendsScreen() {
       await Promise.all([
         refreshIncoming(currentUserId),
         action === 'accept' ? refreshFriends(currentUserId) : Promise.resolve(),
+        refreshUnread(), // Update badge counts immediately
       ]);
     } catch (error) {
       console.error(`Error ${action}ing friend request:`, error);
