@@ -151,6 +151,17 @@ export const signOut = async (): Promise<AuthResponse> => {
   try {
     console.log('[Auth] Initiating sign out...');
 
+    // First, remove all Realtime channels to prevent callback errors
+    try {
+      console.log('[Auth] Removing all Realtime channels...');
+      await supabase.removeAllChannels();
+      console.log('[Auth] All channels removed');
+    } catch (channelError) {
+      console.warn('[Auth] Error removing channels (non-critical):', channelError);
+      // Don't fail sign out if channel cleanup fails
+    }
+
+    // Now sign out
     const { error } = await supabase.auth.signOut();
 
     if (error) {

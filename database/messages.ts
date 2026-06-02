@@ -210,14 +210,22 @@ export const getUnreadCountsByFriend = async (
 
 /**
  * Subscribe to new messages in a conversation
+ * Uses unique channel names to allow multiple chat subscriptions
  */
 export const subscribeToMessages = (
   userId: string,
   friendId: string,
   callback: (message: Message) => void
 ) => {
+  // Generate unique channel name to avoid conflicts when multiple chats are open
+  const channelName = `messages-${userId}-${friendId}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+
+  console.log('[Messages] Subscribing to conversation channel:', channelName);
+
   const channel = supabase
-    .channel('messages')
+    .channel(channelName)
     .on(
       'postgres_changes',
       {
@@ -233,19 +241,28 @@ export const subscribeToMessages = (
     .subscribe();
 
   return () => {
+    console.log('[Messages] Unsubscribing from conversation channel:', channelName);
     supabase.removeChannel(channel);
   };
 };
 
 /**
  * Subscribe to all new messages for a user (for notifications)
+ * Uses unique channel names to allow multiple subscriptions
  */
 export const subscribeToAllMessages = (
   userId: string,
   callback: () => void
 ) => {
+  // Generate unique channel name to avoid conflicts when multiple components subscribe
+  const channelName = `all-messages-${userId}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+
+  console.log('[Messages] Subscribing to channel:', channelName);
+
   const channel = supabase
-    .channel('all-messages')
+    .channel(channelName)
     .on(
       'postgres_changes',
       {
@@ -261,6 +278,7 @@ export const subscribeToAllMessages = (
     .subscribe();
 
   return () => {
+    console.log('[Messages] Unsubscribing from channel:', channelName);
     supabase.removeChannel(channel);
   };
 };
