@@ -125,21 +125,32 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const handleSaveBio = async () => {
-    if (!profile) return;
+    if (!profile) {
+      console.error('[Bio] No profile found');
+      return;
+    }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ bio: editedBio.trim() })
-      .eq('id', profile.id);
+    try {
+      console.log('[Bio] Saving bio...');
+      const { error } = await supabase
+        .from('profiles')
+        .update({ bio: editedBio.trim() })
+        .eq('id', profile.id);
 
-    if (error) {
-      console.error('Error updating bio:', error);
-      Alert.alert('Error', 'Failed to update bio');
-    } else {
-      analytics.profileUpdated('bio');
-      setProfile({ ...profile, bio: editedBio.trim() });
-      setIsEditingBio(false);
-      Alert.alert('Success', 'Bio updated successfully');
+      if (error) {
+        console.error('[Bio] Error updating:', error);
+        Alert.alert('Error', `Failed to update bio: ${error.message}`);
+      } else {
+        console.log('[Bio] Successfully saved');
+        // Track analytics in background
+        analytics.profileUpdated('bio');
+        setProfile({ ...profile, bio: editedBio.trim() });
+        setIsEditingBio(false);
+        Alert.alert('Success', 'Bio updated successfully');
+      }
+    } catch (error: any) {
+      console.error('[Bio] Unexpected error:', error);
+      Alert.alert('Error', 'An unexpected error occurred while saving bio');
     }
   };
 
@@ -155,52 +166,74 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const handleSaveInfo = async () => {
-    if (!profile) return;
+    if (!profile) {
+      console.error('[Info] No profile found');
+      return;
+    }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        year: editedYear.trim(),
-        major: editedMajor.trim(),
-      })
-      .eq('id', profile.id);
+    try {
+      console.log('[Info] Saving info...');
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          year: editedYear.trim(),
+          major: editedMajor.trim(),
+        })
+        .eq('id', profile.id);
 
-    if (error) {
-      console.error('Error updating info:', error);
-      Alert.alert('Error', 'Failed to update information');
-    } else {
-      analytics.profileUpdated('info');
-      setProfile({
-        ...profile,
-        year: editedYear.trim(),
-        major: editedMajor.trim(),
-      });
-      setIsEditingInfo(false);
-      Alert.alert('Success', 'Information updated successfully');
+      if (error) {
+        console.error('[Info] Error updating:', error);
+        Alert.alert('Error', `Failed to update information: ${error.message}`);
+      } else {
+        console.log('[Info] Successfully saved');
+        // Track analytics in background
+        analytics.profileUpdated('info');
+        setProfile({
+          ...profile,
+          year: editedYear.trim(),
+          major: editedMajor.trim(),
+        });
+        setIsEditingInfo(false);
+        Alert.alert('Success', 'Information updated successfully');
+      }
+    } catch (error: any) {
+      console.error('[Info] Unexpected error:', error);
+      Alert.alert('Error', 'An unexpected error occurred while saving information');
     }
   };
 
   const handleSaveInterests = async () => {
-    if (!profile) return;
+    if (!profile) {
+      console.error('[Interests] No profile found');
+      return;
+    }
 
     if (editedInterests.length < 3) {
       Alert.alert('Error', 'Please select at least 3 interests');
       return;
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ interests: editedInterests })
-      .eq('id', profile.id);
+    try {
+      console.log('[Interests] Saving interests...');
+      const { error } = await supabase
+        .from('profiles')
+        .update({ interests: editedInterests })
+        .eq('id', profile.id);
 
-    if (error) {
-      console.error('Error updating interests:', error);
-      Alert.alert('Error', 'Failed to update interests');
-    } else {
-      analytics.profileUpdated('interests');
-      setProfile({ ...profile, interests: editedInterests });
-      setIsEditingInterests(false);
-      Alert.alert('Success', 'Interests updated successfully');
+      if (error) {
+        console.error('[Interests] Error updating:', error);
+        Alert.alert('Error', `Failed to update interests: ${error.message}`);
+      } else {
+        console.log('[Interests] Successfully saved');
+        // Track analytics in background
+        analytics.profileUpdated('interests');
+        setProfile({ ...profile, interests: editedInterests });
+        setIsEditingInterests(false);
+        Alert.alert('Success', 'Interests updated successfully');
+      }
+    } catch (error: any) {
+      console.error('[Interests] Unexpected error:', error);
+      Alert.alert('Error', 'An unexpected error occurred while saving interests');
     }
   };
 
@@ -214,12 +247,25 @@ export default function ProfileScreen({ navigation }: any) {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            analytics.userSignedOut();
-            const result = await signOut();
-            if (result.success) {
-              // Navigation will be handled by App.tsx auth state listener
-            } else {
-              Alert.alert('Error', result.error?.message || 'Failed to sign out');
+            try {
+              console.log('[SignOut] Starting sign out process...');
+              // Track analytics (don't await - let it run in background)
+              analytics.userSignedOut();
+
+              // Sign out
+              const result = await signOut();
+              console.log('[SignOut] Sign out result:', result);
+
+              if (result.success) {
+                console.log('[SignOut] Successfully signed out');
+                // Navigation will be handled by App.tsx auth state listener
+              } else {
+                console.error('[SignOut] Failed:', result.error?.message);
+                Alert.alert('Error', result.error?.message || 'Failed to sign out');
+              }
+            } catch (error: any) {
+              console.error('[SignOut] Unexpected error:', error);
+              Alert.alert('Error', 'An unexpected error occurred while signing out');
             }
           },
         },

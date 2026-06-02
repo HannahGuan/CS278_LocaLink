@@ -10,8 +10,13 @@ export const expoSecureStorage = {
     try {
       if (Platform.OS === 'web') {
         // For web, use localStorage
-        if (typeof window !== 'undefined') {
-          return window.localStorage.getItem(key);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            return window.localStorage.getItem(key);
+          } catch (storageError) {
+            console.error('localStorage.getItem failed:', storageError);
+            return null;
+          }
         }
         return null;
       }
@@ -26,8 +31,30 @@ export const expoSecureStorage = {
     try {
       if (Platform.OS === 'web') {
         // For web, use localStorage
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(key, value);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            window.localStorage.setItem(key, value);
+          } catch (storageError) {
+            // localStorage might be full or disabled
+            console.error('localStorage.setItem failed:', storageError);
+            // Try to clear old items if quota exceeded
+            if (storageError instanceof Error && storageError.name === 'QuotaExceededError') {
+              console.warn('localStorage quota exceeded, clearing old auth data...');
+              try {
+                // Clear old Supabase auth keys
+                const keys = Object.keys(window.localStorage);
+                keys.forEach(k => {
+                  if (k.startsWith('supabase.auth.token') && k !== key) {
+                    window.localStorage.removeItem(k);
+                  }
+                });
+                // Retry setting the item
+                window.localStorage.setItem(key, value);
+              } catch (retryError) {
+                console.error('Failed to recover from quota error:', retryError);
+              }
+            }
+          }
         }
         return;
       }
@@ -41,8 +68,12 @@ export const expoSecureStorage = {
     try {
       if (Platform.OS === 'web') {
         // For web, use localStorage
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(key);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            window.localStorage.removeItem(key);
+          } catch (storageError) {
+            console.error('localStorage.removeItem failed:', storageError);
+          }
         }
         return;
       }

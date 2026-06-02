@@ -43,9 +43,11 @@ export const signUp = async (
       };
     }
 
-    // Create user in Supabase Auth
+    console.log('[SignUp] Starting signup process for:', email);
+
+    // Create user in Supabase Auth with timeout
     // The database trigger will automatically create the profile
-    const { data, error } = await supabase.auth.signUp({
+    const signUpPromise = supabase.auth.signUp({
       email,
       password,
       options: {
@@ -55,19 +57,37 @@ export const signUp = async (
       },
     });
 
+    // Add 30 second timeout to prevent infinite loading
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Signup request timed out. Please check your internet connection and try again.')), 30000);
+    });
+
+    const { data, error } = await Promise.race([signUpPromise, timeoutPromise]);
+
     if (error) {
+      console.error('[SignUp] Error:', error.message);
+      // Provide more user-friendly error messages
+      let errorMessage = error.message;
+      if (error.message.includes('already registered')) {
+        errorMessage = 'This email is already registered. Please try signing in instead.';
+      } else if (error.message.includes('Invalid email')) {
+        errorMessage = 'Please enter a valid email address.';
+      }
       return {
         success: false,
-        error: { message: error.message },
+        error: { message: errorMessage },
       };
     }
 
     if (!data.user) {
+      console.error('[SignUp] No user data returned');
       return {
         success: false,
-        error: { message: 'Failed to create user account' },
+        error: { message: 'Failed to create user account. Please try again.' },
       };
     }
+
+    console.log('[SignUp] Success! User ID:', data.user.id);
 
     // Note: Profile is automatically created by database trigger (handle_new_user function)
     // No need to manually insert into profiles table
@@ -77,9 +97,10 @@ export const signUp = async (
       userId: data.user.id,
     };
   } catch (error: any) {
+    console.error('[SignUp] Unexpected error:', error);
     return {
       success: false,
-      error: { message: error.message || 'An unexpected error occurred' },
+      error: { message: error.message || 'An unexpected error occurred. Please try again.' },
     };
   }
 };
@@ -128,19 +149,24 @@ export const signIn = async (
  */
 export const signOut = async (): Promise<AuthResponse> => {
   try {
+    console.log('[Auth] Initiating sign out...');
+
     const { error } = await supabase.auth.signOut();
 
     if (error) {
+      console.error('[Auth] Sign out error:', error);
       return {
         success: false,
         error: { message: error.message },
       };
     }
 
+    console.log('[Auth] Sign out successful');
     return {
       success: true,
     };
   } catch (error: any) {
+    console.error('[Auth] Sign out exception:', error);
     return {
       success: false,
       error: { message: error.message || 'An unexpected error occurred' },
