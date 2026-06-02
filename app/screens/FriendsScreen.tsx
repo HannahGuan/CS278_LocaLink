@@ -83,7 +83,7 @@ export default function FriendsScreen() {
   const [isLoadingNearby, setIsLoadingNearby] = useState<boolean>(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
-  const { refreshUnread } = useUnread();
+  const { refreshUnread, pendingFriendRequests: pendingRequestsCount } = useUnread();
 
   const tabs = [
     { id: 'friends' as const, label: 'Friends', icon: '👥' },
@@ -384,12 +384,21 @@ export default function FriendsScreen() {
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Friends</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => setShowAddFriendModal(true)}
-          >
-            <Text style={styles.addButtonText}>+</Text>
-          </TouchableOpacity>
+          <View style={styles.addButtonContainer}>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => setShowAddFriendModal(true)}
+            >
+              <Text style={styles.addButtonText}>+</Text>
+            </TouchableOpacity>
+            {pendingRequestsCount > 0 && (
+              <View style={styles.addButtonBadge}>
+                <Text style={styles.addButtonBadgeText}>
+                  {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
         <Text style={styles.subtitle}>Connect with your Stanford community</Text>
 
@@ -1240,6 +1249,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999999',
   },
+  addButtonContainer: {
+    position: 'relative',
+  },
   addButton: {
     width: 36,
     height: 36,
@@ -1252,6 +1264,25 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#FFFFFF',
     fontWeight: '300',
+  },
+  addButtonBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF3B30',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  addButtonBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   avatarFallback: {
     backgroundColor: '#F4E8E9',
