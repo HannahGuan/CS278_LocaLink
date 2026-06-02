@@ -238,39 +238,69 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('[SignOut] Starting sign out process...');
-              // Track analytics (don't await - let it run in background)
-              analytics.userSignedOut();
+    console.log('[SignOut] Button clicked');
 
-              // Sign out
-              const result = await signOut();
-              console.log('[SignOut] Sign out result:', result);
-
-              if (result.success) {
-                console.log('[SignOut] Successfully signed out');
-                // Navigation will be handled by App.tsx auth state listener
-              } else {
-                console.error('[SignOut] Failed:', result.error?.message);
-                Alert.alert('Error', result.error?.message || 'Failed to sign out');
-              }
-            } catch (error: any) {
-              console.error('[SignOut] Unexpected error:', error);
-              Alert.alert('Error', 'An unexpected error occurred while signing out');
-            }
+    // Web-compatible confirmation dialog
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to sign out?');
+      if (!confirmed) {
+        console.log('[SignOut] User cancelled');
+        return;
+      }
+    } else {
+      // Use Alert.alert for mobile
+      Alert.alert(
+        'Sign Out',
+        'Are you sure you want to sign out?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Sign Out',
+            style: 'destructive',
+            onPress: async () => {
+              await performSignOut();
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+      return;
+    }
+
+    // For web, continue directly after confirmation
+    await performSignOut();
+  };
+
+  const performSignOut = async () => {
+    try {
+      console.log('[SignOut] Starting sign out process...');
+      // Track analytics (don't await - let it run in background)
+      analytics.userSignedOut();
+
+      // Sign out
+      const result = await signOut();
+      console.log('[SignOut] Sign out result:', result);
+
+      if (result.success) {
+        console.log('[SignOut] Successfully signed out');
+        // Navigation will be handled by App.tsx auth state listener
+      } else {
+        console.error('[SignOut] Failed:', result.error?.message);
+        const errorMsg = result.error?.message || 'Failed to sign out';
+        if (Platform.OS === 'web') {
+          window.alert(`Error: ${errorMsg}`);
+        } else {
+          Alert.alert('Error', errorMsg);
+        }
+      }
+    } catch (error: any) {
+      console.error('[SignOut] Unexpected error:', error);
+      const errorMsg = 'An unexpected error occurred while signing out';
+      if (Platform.OS === 'web') {
+        window.alert(`Error: ${errorMsg}`);
+      } else {
+        Alert.alert('Error', errorMsg);
+      }
+    }
   };
 
   if (loading) {
