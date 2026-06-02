@@ -1,22 +1,32 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getCurrentUser } from '../../database/auth';
 import { getUnreadCount, subscribeToAllMessages } from '../../database/messages';
+import { databaseClient } from '../../database/databaseClient';
+import { supabase } from '../../database/supabase';
 
 interface UnreadContextType {
   totalUnread: number;
+  unreadMessages: number;
+  pendingFriendRequests: number;
   refreshUnread: () => void;
 }
 
 const UnreadContext = createContext<UnreadContextType>({
   totalUnread: 0,
+  unreadMessages: 0,
+  pendingFriendRequests: 0,
   refreshUnread: () => {},
 });
 
 export const useUnread = () => useContext(UnreadContext);
 
 export const UnreadProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [totalUnread, setTotalUnread] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Total unread = messages + friend requests
+  const totalUnread = unreadMessages + pendingFriendRequests;
 
   useEffect(() => {
     loadUser();
@@ -28,26 +38,46 @@ export const UnreadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (user) {
         setCurrentUserId(user.id);
 
-        // Try to load unread count, but don't block if messages table doesn't exist yet
+        // Load initial counts
         try {
           await refreshUnread(user.id);
         } catch (error) {
-          console.log('Could not load unread messages (messages table may not exist yet):', error);
-          // Set to 0 if table doesn't exist
-          setTotalUnread(0);
+          console.log('Could not load unread counts:', error);
+          setUnreadMessages(0);
+          setPendingFriendRequests(0);
         }
 
         // Subscribe to new messages
         try {
-          const unsubscribe = subscribeToAllMessages(user.id, () => {
+          const unsubscribeMessages = subscribeToAllMessages(user.id, () => {
             refreshUnread(user.id);
           });
 
+          // Subscribe to friend request changes
+          const channelName = `friend-requests-${user.id}-${Date.now()}`;
+          const friendRequestChannel = supabase
+            .channel(channelName)
+            .on(
+              'postgres_changes',
+              {
+                event: '*', // Listen to INSERT, UPDATE, DELETE
+                schema: 'public',
+                table: 'friends',
+                filter: `friend_id=eq.${user.id}`, // Only requests where I'm the recipient
+              },
+              () => {
+                console.log('[UnreadContext] Friend request change detected');
+                refreshUnread(user.id);
+              }
+            )
+            .subscribe();
+
           return () => {
-            unsubscribe();
+            unsubscribeMessages();
+            supabase.removeChannel(friendRequestChannel);
           };
         } catch (error) {
-          console.log('Could not subscribe to messages:', error);
+          console.log('Could not subscribe to realtime updates:', error);
         }
       }
     } catch (error) {
@@ -60,17 +90,36 @@ export const UnreadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!id) return;
 
     try {
-      const count = await getUnreadCount(id);
-      setTotalUnread(count);
+      // Get unread message count
+      const messageCount = await getUnreadCount(id);
+      setUnreadMessages(messageCount);
+
+      // Get pending friend request count
+      const friendRequests = await databaseClient.getIncomingPendingRequests(id);
+      setPendingFriendRequests(friendRequests.length);
+
+      console.log('[UnreadContext] Counts updated:', {
+        messages: messageCount,
+        friendRequests: friendRequests.length,
+        total: messageCount + friendRequests.length,
+      });
     } catch (error) {
-      console.error('Error refreshing unread count:', error);
+      console.error('Error refreshing unread counts:', error);
       // Don't throw - just set to 0
-      setTotalUnread(0);
+      setUnreadMessages(0);
+      setPendingFriendRequests(0);
     }
   };
 
   return (
-    <UnreadContext.Provider value={{ totalUnread, refreshUnread }}>
+    <UnreadContext.Provider
+      value={{
+        totalUnread,
+        unreadMessages,
+        pendingFriendRequests,
+        refreshUnread,
+      }}
+    >
       {children}
     </UnreadContext.Provider>
   );
