@@ -113,12 +113,24 @@ export const signIn = async (
   password: string
 ): Promise<AuthResponse> => {
   try {
+    console.log('[SignIn] Starting sign in for:', email);
+
+    // First, clear any corrupted session data
+    try {
+      console.log('[SignIn] Clearing any existing session...');
+      await supabase.auth.signOut();
+    } catch (clearError) {
+      console.warn('[SignIn] Error clearing session (non-critical):', clearError);
+    }
+
+    // Now sign in with fresh credentials
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
+      console.error('[SignIn] Sign in error:', error);
       return {
         success: false,
         error: { message: error.message },
@@ -126,17 +138,20 @@ export const signIn = async (
     }
 
     if (!data.user) {
+      console.error('[SignIn] No user data returned');
       return {
         success: false,
         error: { message: 'Failed to sign in' },
       };
     }
 
+    console.log('[SignIn] Sign in successful! User ID:', data.user.id);
     return {
       success: true,
       userId: data.user.id,
     };
   } catch (error: any) {
+    console.error('[SignIn] Unexpected error:', error);
     return {
       success: false,
       error: { message: error.message || 'An unexpected error occurred' },

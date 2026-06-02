@@ -27,27 +27,47 @@ export default function LoginScreen({ onLogin, onNavigateToRegister }: LoginScre
 
   const handleLogin = async () => {
     if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email');
+      if (Platform.OS === 'web') {
+        window.alert('Please enter your email');
+      } else {
+        Alert.alert('Error', 'Please enter your email');
+      }
       return;
     }
 
     if (!password) {
-      Alert.alert('Error', 'Please enter your password');
+      if (Platform.OS === 'web') {
+        window.alert('Please enter your password');
+      } else {
+        Alert.alert('Error', 'Please enter your password');
+      }
       return;
     }
 
     setLoading(true);
 
     try {
+      console.log('[Login] Attempting to sign in...');
       const result = await signIn(email.toLowerCase().trim(), password);
 
       if (result.success) {
+        console.log('[Login] Sign in successful');
         onLogin();
       } else {
-        Alert.alert('Login Failed', result.error?.message || 'Invalid email or password');
+        console.error('[Login] Sign in failed:', result.error?.message);
+        if (Platform.OS === 'web') {
+          window.alert(`Login Failed: ${result.error?.message || 'Invalid email or password'}`);
+        } else {
+          Alert.alert('Login Failed', result.error?.message || 'Invalid email or password');
+        }
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'An unexpected error occurred');
+      console.error('[Login] Unexpected error:', error);
+      if (Platform.OS === 'web') {
+        window.alert(`Error: ${error.message || 'An unexpected error occurred'}`);
+      } else {
+        Alert.alert('Error', error.message || 'An unexpected error occurred');
+      }
     } finally {
       setLoading(false);
     }
