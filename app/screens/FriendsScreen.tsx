@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -142,6 +143,32 @@ export default function FriendsScreen() {
     });
     return unsubscribe;
   }, [currentUserId]);
+
+  // Close the chat modal and refresh everything the Messages sub-tab and badges
+  // derive from messages, so a just-sent message updates its conversation
+  // preview here too (not only in the standalone Messages screen).
+  const closeChat = () => {
+    setChatFriend(null);
+    if (currentUserId !== null) {
+      refreshUnreadCounts(currentUserId);
+      refreshConversations(currentUserId);
+      refreshUnread();
+    }
+  };
+
+  // Refetch conversations and unread counts whenever this screen regains focus
+  // (e.g. switching back from another bottom tab). The mount effect only runs
+  // once, so without this the Messages sub-tab would keep showing whatever was
+  // loaded then. currentUserId is null on the very first focus; the mount
+  // effect handles that initial load.
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUserId !== null) {
+        refreshConversations(currentUserId);
+        refreshUnreadCounts(currentUserId);
+      }
+    }, [currentUserId])
+  );
 
   const refreshUnreadCounts = async (userId: string) => {
     try {
@@ -416,6 +443,11 @@ export default function FriendsScreen() {
                 if (selectedTab !== tab.id) {
                   analytics.filterChanged(selectedTab, tab.id);
                   setSelectedTab(tab.id);
+                  // Pill switches are internal state, not navigation focus, so
+                  // refresh the conversation previews when entering Messages.
+                  if (tab.id === 'messages' && currentUserId !== null) {
+                    refreshConversations(currentUserId);
+                  }
                 }
               }}
               style={[styles.tab, selectedTab === tab.id && styles.tabActive]}
@@ -874,7 +906,7 @@ export default function FriendsScreen() {
           visible={true}
           animationType="slide"
           presentationStyle="fullScreen"
-          onRequestClose={() => setChatFriend(null)}
+          onRequestClose={closeChat}
         >
           <ChatDetailScreen
             route={{
@@ -890,14 +922,7 @@ export default function FriendsScreen() {
           />
           <TouchableOpacity
             style={styles.chatCloseButton}
-            onPress={() => {
-              setChatFriend(null);
-              // Refresh unread counts when closing chat
-              if (currentUserId) {
-                refreshUnreadCounts(currentUserId);
-                refreshUnread(); // Refresh tab badge
-              }
-            }}
+            onPress={closeChat}
           >
             <Text style={styles.chatCloseText}>✕ Close</Text>
           </TouchableOpacity>

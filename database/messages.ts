@@ -20,6 +20,19 @@ export interface Conversation {
 }
 
 /**
+ * Sortable time for a message. A missing or unparseable created_at is treated
+ * as the oldest possible time so a real, dated message always wins the "newest"
+ * comparison instead of a null-dated row.
+ */
+const _messageTime = (message: Message): number => {
+  if (message.created_at === null || message.created_at === undefined) {
+    return -Infinity;
+  }
+  const time = new Date(message.created_at).getTime();
+  return Number.isNaN(time) ? -Infinity : time;
+};
+
+/**
  * Get all conversations for a user.
  * Walks every message the user sent or received, groups by the other party,
  * then resolves those profile rows. Returning chats only with accepted
@@ -38,17 +51,22 @@ export const getConversations = async (userId: string): Promise<Conversation[]> 
   }
 
   // For each other party, capture their newest message + accumulate unread count.
+  // Pick the newest message explicitly by comparing timestamps rather than
+  // trusting the query's row order: a row with a NULL created_at sorts NULLS
+  // FIRST under "created_at DESC", which would otherwise hijack the preview.
   const byOtherId = new Map<string, { lastMessage: Message; unreadCount: number }>();
   for (const message of messages as Message[]) {
     const otherId =
       message.sender_id === userId ? message.recipient_id : message.sender_id;
-    let entry = byOtherId.get(otherId);
+    const entry = byOtherId.get(otherId);
     if (entry === undefined) {
-      entry = { lastMessage: message, unreadCount: 0 };
-      byOtherId.set(otherId, entry);
+      byOtherId.set(otherId, { lastMessage: message, unreadCount: 0 });
+    } else if (_messageTime(message) > _messageTime(entry.lastMessage)) {
+      entry.lastMessage = message;
     }
     if (message.recipient_id === userId && message.read === false) {
-      entry.unreadCount += 1;
+      // entry may have just been created above; re-read to mutate it.
+      byOtherId.get(otherId)!.unreadCount += 1;
     }
   }
 
@@ -84,6 +102,25 @@ export const getConversations = async (userId: string): Promise<Conversation[]> 
       new Date(a.lastMessage.created_at).getTime()
     );
   });
+
+  // TEMP DIAGNOSTIC: confirm whether the chosen preview is actually the newest
+  // message and whether created_at values are distinct. Remove after debugging.
+  console.log(
+    '[getConversations] total messages fetched:',
+    (messages as Message[]).length
+  );
+  for (const convo of conversations) {
+    const all = (messages as Message[]).filter(
+      (m) =>
+        m.sender_id === convo.friend.id || m.recipient_id === convo.friend.id
+    );
+    console.log('[getConversations] convo with', convo.friend.name, {
+      messageCount: all.length,
+      previewContent: convo.lastMessage?.content ?? null,
+      previewCreatedAt: convo.lastMessage?.created_at ?? null,
+      allCreatedAt: all.map((m) => m.created_at),
+    });
+  }
 
   return conversations;
 };

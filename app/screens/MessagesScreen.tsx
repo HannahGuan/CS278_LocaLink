@@ -12,7 +12,11 @@ import {
   Modal,
 } from 'react-native';
 import { getCurrentUser } from '../../database/auth';
-import { getConversations, Conversation } from '../../database/messages';
+import {
+  getConversations,
+  subscribeToAllMessages,
+  Conversation,
+} from '../../database/messages';
 import { Profile } from '../../types';
 import ChatDetailScreen from './ChatDetailScreen';
 import { useUnread } from '../contexts/UnreadContext';
@@ -53,6 +57,27 @@ export default function MessagesScreen() {
       loadConversations();
     }, [loadConversations])
   );
+
+  // Keep previews live: refetch whenever a new message arrives for this user
+  // while the list is on screen, so the latest message shows without needing
+  // to navigate away and back.
+  useEffect(() => {
+    if (currentUserId === null) {
+      return;
+    }
+    const unsubscribe = subscribeToAllMessages(currentUserId, () => {
+      loadConversations();
+    });
+    return unsubscribe;
+  }, [currentUserId, loadConversations]);
+
+  // Reload conversations on every chat-close path (Close button, swipe, or
+  // hardware back) so the preview reflects messages just sent in the chat.
+  const closeChat = useCallback(() => {
+    setChatFriend(null);
+    refreshUnread();
+    loadConversations();
+  }, [refreshUnread, loadConversations]);
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -149,7 +174,7 @@ export default function MessagesScreen() {
           visible={true}
           animationType="slide"
           presentationStyle="fullScreen"
-          onRequestClose={() => setChatFriend(null)}
+          onRequestClose={closeChat}
         >
           <ChatDetailScreen
             route={{
@@ -165,11 +190,7 @@ export default function MessagesScreen() {
           />
           <TouchableOpacity
             style={styles.chatCloseButton}
-            onPress={() => {
-              setChatFriend(null);
-              refreshUnread();
-              loadConversations();
-            }}
+            onPress={closeChat}
           >
             <Text style={styles.chatCloseText}>✕ Close</Text>
           </TouchableOpacity>
