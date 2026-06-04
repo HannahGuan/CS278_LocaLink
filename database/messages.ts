@@ -103,25 +103,6 @@ export const getConversations = async (userId: string): Promise<Conversation[]> 
     );
   });
 
-  // TEMP DIAGNOSTIC: confirm whether the chosen preview is actually the newest
-  // message and whether created_at values are distinct. Remove after debugging.
-  console.log(
-    '[getConversations] total messages fetched:',
-    (messages as Message[]).length
-  );
-  for (const convo of conversations) {
-    const all = (messages as Message[]).filter(
-      (m) =>
-        m.sender_id === convo.friend.id || m.recipient_id === convo.friend.id
-    );
-    console.log('[getConversations] convo with', convo.friend.name, {
-      messageCount: all.length,
-      previewContent: convo.lastMessage?.content ?? null,
-      previewCreatedAt: convo.lastMessage?.created_at ?? null,
-      allCreatedAt: all.map((m) => m.created_at),
-    });
-  }
-
   return conversations;
 };
 
