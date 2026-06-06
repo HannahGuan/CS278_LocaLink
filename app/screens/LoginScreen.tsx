@@ -88,7 +88,7 @@ export default function LoginScreen({ onLogin, onNavigateToRegister }: LoginScre
             <View style={styles.formHeader}>
               <Text style={styles.logo}>📍</Text>
               <Text style={styles.title}>Welcome Back</Text>
-              <Text style={styles.subtitle}>Sign in to Cardinal Connect</Text>
+              <Text style={styles.subtitle}>Sign in to Local Link</Text>
             </View>
 
             {/* Login Form */}
@@ -166,7 +166,7 @@ export default function LoginScreen({ onLogin, onNavigateToRegister }: LoginScre
           <View style={styles.logoBox}>
             <Text style={styles.logoIcon}>📍</Text>
           </View>
-          <Text style={styles.title}>Cardinal Connect</Text>
+          <Text style={styles.title}>Local Link</Text>
           <Text style={styles.subtitle}>Meet, connect, explore campus together</Text>
         </View>
 

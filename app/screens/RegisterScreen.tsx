@@ -105,7 +105,7 @@ export default function RegisterScreen({
             <Text style={styles.logo}>🎓</Text>
             <Text style={styles.title}>Create Account</Text>
             <Text style={styles.subtitle}>
-              Join Cardinal Connect with your Stanford email
+              Join Local Link with your Stanford email
             </Text>
           </View>
 
